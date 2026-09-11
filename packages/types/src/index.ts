@@ -125,6 +125,30 @@ export interface FoodCustomizationOption {
   isActive: boolean;
 }
 
+
+export type CustomerAddressLabel =
+  | "HOME"
+  | "WORK"
+  | "OTHER";
+
+  export interface CustomerAddress {
+  id: string;
+  customerId: string;
+  label: CustomerAddressLabel;
+  line1: string;
+  line2?: string;
+  area: string;
+  city: string;
+  state: string;
+  pincode: string;
+  location: GeoLocation;
+  contactName: string;
+  contactPhone: string;
+  isDefault: boolean;
+  deliveryInstructions?: string;
+}
+
+
 export interface FoodItem {
   id: string;
   restaurantId: string;
