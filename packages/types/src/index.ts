@@ -160,3 +160,25 @@ export interface FoodItem {
   isAvailable: boolean;
   foodType: FoodType;
 }
+
+
+//order items and customizations
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  foodItemId: string;
+  foodName: string;
+  unitPriceInPaise: number;
+  quantity: number;
+  customizations: OrderItemCustomization[];
+  lineTotalInPaise: number;
+}
+
+export interface OrderItemCustomization {
+  id: string;
+  orderItemId: string;
+  groupName: string;
+  optionName: string;
+  priceAdjustmentInPaise: number;
+}
