@@ -193,6 +193,7 @@ export interface Order {
   deliveryAddress: OrderDeliveryAddress;
   pricing: OrderPricing;
   items: OrderItem[];
+  cancellation?: OrderCancellation;
 }
 
 export interface OrderDeliveryAddress {
@@ -260,4 +261,42 @@ export type RefundStatus =
     status: RefundStatus;
   providerRefundId?: string;
   createdAt: string;
+}
+
+export type DeliveryStatus =
+  | "PENDING"
+  | "ASSIGNED"
+  | "ACCEPTED"
+  | "ARRIVED_AT_RESTAURANT"
+  | "PICKED_UP"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "CANCELLED";
+
+  export interface Delivery {
+  id: string;
+  orderId: string;
+  deliveryPartnerId: string;
+  status: DeliveryStatus;
+  assignedAt?: string;
+  acceptedAt?: string;
+  arrivedAtRestaurant?: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
+  estimatedDeliveryTime?: string;
+}
+
+export type OrderCancellationReason =
+  | "CUSTOMER_REQUEST"
+  | "RESTAURANT_REJECTED"
+  | "RESTAURANT_TIMEOUT"
+  | "PAYMENT_FAILED"
+  | "DELIVERY_FAILED"
+  | "SYSTEM_ERROR";
+
+  export interface OrderCancellation {
+  cancelledBy: UserRole;
+  reason: OrderCancellationReason;
+  cancelledAt: string;
+  note?: string;
 }
