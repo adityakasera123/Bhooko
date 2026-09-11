@@ -215,3 +215,49 @@ export interface OrderPricing {
   discountInPaise: number;
   totalInPaise: number;
 }
+
+export type PaymentStatus =
+  | "PENDING"
+  | "SUCCESS"
+  | "FAILED"
+  | "REFUNDED"
+  | "PARTIALLY_REFUNDED";
+
+  export type PaymentMethod =
+  | "UPI"
+  | "CARD"
+  | "NET_BANKING"
+  | "WALLET"
+  | "CASH_ON_DELIVERY";
+
+  export type PaymentProvider =
+  | "RAZORPAY";
+
+  export interface Payment {
+  id: string;
+  orderId: string;
+  customerId: string;
+  amountInPaise: number;
+  currency: string;
+  provider: PaymentProvider;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  providerOrderId: string;
+  providerPaymentId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RefundStatus =
+  | "PENDING"
+  | "SUCCESS"
+  | "FAILED";
+
+  export interface Refund {
+  id: string;
+  paymentId: string;
+  amountInPaise: number;
+    status: RefundStatus;
+  providerRefundId?: string;
+  createdAt: string;
+}
