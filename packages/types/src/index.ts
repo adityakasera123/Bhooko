@@ -84,3 +84,55 @@ export interface Restaurant {
   openingHours: DailyHours[];
   deliveryConfig: DeliveryConfig;
 }
+
+
+export type FoodType =
+  | "VEG"
+  | "NON_VEG"
+  | "EGG";
+
+  export interface FoodCategory {
+  id: string;
+  restaurantId: string;
+  name: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+
+export type CustomizationSelectionType =
+  | "SINGLE"
+  | "MULTIPLE";
+
+  export interface FoodCustomizationGroup {
+  id: string;
+  foodItemId: string;
+  name: string;
+  selectionType: CustomizationSelectionType;
+  isRequired: boolean;
+  minSelections: number;
+  maxSelections: number;
+  displayOrder: number;
+  isActive: boolean;
+}
+export interface FoodCustomizationOption {
+  id: string;
+  customizationGroupId: string;
+  name: string;
+  priceAdjustmentInPaise: number;
+  isAvailable: boolean;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+export interface FoodItem {
+  id: string;
+  restaurantId: string;
+  categoryId: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  priceInPaise: number;
+  isAvailable: boolean;
+  foodType: FoodType;
+}
