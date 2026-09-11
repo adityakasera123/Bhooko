@@ -182,3 +182,36 @@ export interface OrderItemCustomization {
   optionName: string;
   priceAdjustmentInPaise: number;
 }
+
+export interface Order {
+  id: string;
+  customerId: string;
+  restaurantId: string;
+  status: OrderStatus;
+  createdAt: string;
+  updatedAt: string;
+  deliveryAddress: OrderDeliveryAddress;
+  pricing: OrderPricing;
+  items: OrderItem[];
+}
+
+export interface OrderDeliveryAddress {
+  line1: string;
+  line2?: string;
+  area: string;
+  city: string;
+  state: string;
+  pincode: string;
+  location: GeoLocation;
+  contactName: string;
+  contactPhone: string;
+  deliveryInstructions?: string;
+}
+
+export interface OrderPricing {
+  itemsSubtotalInPaise: number;
+  deliveryFeeInPaise: number;
+  taxInPaise: number;
+  discountInPaise: number;
+  totalInPaise: number;
+}
