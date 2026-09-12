@@ -2,3 +2,6 @@ packages:
   - "apps/*"
   - "packages/*"
   - "backend/*"
+allowBuilds:
+  '@parcel/watcher': true
+  unrs-resolver: true
