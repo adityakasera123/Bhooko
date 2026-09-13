@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  RESTAURANT
+  DELIVERY_PARTNER
+  ADMIN
+}
+
+enum RestaurantStatus {
+  OPEN
+  CLOSED
+  PAUSED
+}
+
+enum FoodType {
+  VEG
+  NON_VEG
+  EGG
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String   @unique
+  role      UserRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  restaurants       Restaurant[]
+  customerAddresses CustomerAddress[]
+}
+
+model Restaurant {
+  id          String           @id @default(uuid())
+  ownerId     String
+  name        String
+  description String
+  imageUrl    String
+  latitude    Float
+  longitude   Float
+  addressLine1 String
+  addressLine2 String?
+  area        String
+  city        String
+  state       String
+  pincode     String
+  status      RestaurantStatus
+  rating      Float            @default(0)
+  reviewCount Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  owner      User           @relation(fields: [ownerId], references: [id])
+  categories FoodCategory[]
+  foodItems  FoodItem[]
+
+  @@index([ownerId])
+}
+
+model CustomerAddress {
+  id                 String   @id @default(uuid())
+  customerId         String
+  label              String
+  line1              String
+  line2              String?
+  area               String
+  city               String
+  state              String
+  pincode             String
+  latitude            Float
+  longitude           Float
+  contactName         String
+  contactPhone        String
+  isDefault           Boolean  @default(false)
+  deliveryInstructions String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  customer User @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+}
+
+model FoodCategory {
+  id           String   @id @default(uuid())
+  restaurantId String
+  name         String
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  foodItems  FoodItem[]
+
+  @@index([restaurantId])
+}
+
+model FoodItem {
+  id           String   @id @default(uuid())
+  restaurantId String
+  categoryId   String
+  name         String
+  description  String
+  imageUrl     String
+  priceInPaise Int
+  isAvailable  Boolean  @default(true)
+  foodType     FoodType
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant   @relation(fields: [restaurantId], references: [id])
+  category   FoodCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([restaurantId])
+  @@index([categoryId])
+}
