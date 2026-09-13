@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Post,
   Req,
   UseGuards,
@@ -32,16 +34,19 @@ export class AuthController {
   }
 
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
 
   @Post('refresh')
+  @HttpCode(HttpStatus.OK)
   refresh(@Body() refreshTokenDto: RefreshTokenDto) {
     return this.authService.refresh(refreshTokenDto);
   }
 
   @Post('logout')
+  @HttpCode(HttpStatus.OK)
   logout(@Body() logoutDto: LogoutDto) {
     return this.authService.logout(logoutDto);
   }
