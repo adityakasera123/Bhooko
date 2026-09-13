@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
@@ -108,47 +109,98 @@ export class AuthService {
   }
 
   async refresh(refreshTokenDto: RefreshTokenDto) {
-  const tokenHash = this.tokenService.hashRefreshToken(
-    refreshTokenDto.refreshToken,
-  );
+    const tokenHash = this.tokenService.hashRefreshToken(
+      refreshTokenDto.refreshToken,
+    );
 
-  const storedToken = await this.prisma.refreshToken.findUnique({
-    where: {
-      tokenHash,
-    },
-  });
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: {
+        tokenHash,
+      },
+    });
 
-  if (!storedToken) {
-    throw new UnauthorizedException('Invalid refresh token');
+    if (!storedToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (storedToken.revokedAt) {
+      throw new UnauthorizedException('Refresh token has been revoked');
+    }
+
+    if (storedToken.expiresAt <= new Date()) {
+      throw new UnauthorizedException('Refresh token has expired');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: storedToken.userId,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const payload = {
+      sub: user.id,
+      role: user.role,
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload);
+
+    const newRefreshToken = await this.prisma.$transaction(async (tx) => {
+      await tx.refreshToken.update({
+        where: {
+          id: storedToken.id,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
+
+      const refreshToken = this.tokenService.generateRefreshToken();
+      const newTokenHash = this.tokenService.hashRefreshToken(refreshToken);
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      await tx.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: newTokenHash,
+          expiresAt,
+        },
+      });
+
+      return refreshToken;
+    });
+
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+    };
   }
 
-  if (storedToken.revokedAt) {
-    throw new UnauthorizedException('Refresh token has been revoked');
-  }
+  async logout(logoutDto: LogoutDto) {
+    const tokenHash = this.tokenService.hashRefreshToken(
+      logoutDto.refreshToken,
+    );
 
-  if (storedToken.expiresAt <= new Date()) {
-    throw new UnauthorizedException('Refresh token has expired');
-  }
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: {
+        tokenHash,
+      },
+    });
 
-  const user = await this.prisma.user.findUnique({
-    where: {
-      id: storedToken.userId,
-    },
-  });
+    if (!storedToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
 
-  if (!user) {
-    throw new UnauthorizedException('Invalid refresh token');
-  }
+    if (storedToken.revokedAt) {
+      throw new UnauthorizedException('Refresh token has already been revoked');
+    }
 
-  const payload = {
-    sub: user.id,
-    role: user.role,
-  };
-
-  const accessToken = await this.jwtService.signAsync(payload);
-
-  const newRefreshToken = await this.prisma.$transaction(async (tx) => {
-    await tx.refreshToken.update({
+    await this.prisma.refreshToken.update({
       where: {
         id: storedToken.id,
       },
@@ -157,28 +209,10 @@ export class AuthService {
       },
     });
 
-    const refreshToken = this.tokenService.generateRefreshToken();
-    const newTokenHash = this.tokenService.hashRefreshToken(refreshToken);
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    await tx.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: newTokenHash,
-        expiresAt,
-      },
-    });
-
-    return refreshToken;
-  });
-
-  return {
-    accessToken,
-    refreshToken: newRefreshToken,
-  };
-}
+    return {
+      message: 'Logged out successfully',
+    };
+  }
 
   private async createRefreshToken(userId: string) {
     const refreshToken = this.tokenService.generateRefreshToken();
