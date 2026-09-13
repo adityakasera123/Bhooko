@@ -4,10 +4,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
+import { TokenService } from './token.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +18,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
+    private readonly tokenService: TokenService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -88,9 +92,11 @@ export class AuthService {
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
+    const refreshToken = await this.createRefreshToken(user.id);
 
     return {
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         name: user.name,
@@ -99,5 +105,96 @@ export class AuthService {
         role: user.role,
       },
     };
+  }
+
+  async refresh(refreshTokenDto: RefreshTokenDto) {
+  const tokenHash = this.tokenService.hashRefreshToken(
+    refreshTokenDto.refreshToken,
+  );
+
+  const storedToken = await this.prisma.refreshToken.findUnique({
+    where: {
+      tokenHash,
+    },
+  });
+
+  if (!storedToken) {
+    throw new UnauthorizedException('Invalid refresh token');
+  }
+
+  if (storedToken.revokedAt) {
+    throw new UnauthorizedException('Refresh token has been revoked');
+  }
+
+  if (storedToken.expiresAt <= new Date()) {
+    throw new UnauthorizedException('Refresh token has expired');
+  }
+
+  const user = await this.prisma.user.findUnique({
+    where: {
+      id: storedToken.userId,
+    },
+  });
+
+  if (!user) {
+    throw new UnauthorizedException('Invalid refresh token');
+  }
+
+  const payload = {
+    sub: user.id,
+    role: user.role,
+  };
+
+  const accessToken = await this.jwtService.signAsync(payload);
+
+  const newRefreshToken = await this.prisma.$transaction(async (tx) => {
+    await tx.refreshToken.update({
+      where: {
+        id: storedToken.id,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+
+    const refreshToken = this.tokenService.generateRefreshToken();
+    const newTokenHash = this.tokenService.hashRefreshToken(refreshToken);
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    await tx.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: newTokenHash,
+        expiresAt,
+      },
+    });
+
+    return refreshToken;
+  });
+
+  return {
+    accessToken,
+    refreshToken: newRefreshToken,
+  };
+}
+
+  private async createRefreshToken(userId: string) {
+    const refreshToken = this.tokenService.generateRefreshToken();
+    const tokenHash = this.tokenService.hashRefreshToken(refreshToken);
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    return refreshToken;
   }
 }

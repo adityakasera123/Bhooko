@@ -24,19 +24,32 @@ enum FoodType {
   NON_VEG
   EGG
 }
-
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  phone     String   @unique
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  phone        String   @unique
   passwordHash String
-  role      UserRole
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   restaurants       Restaurant[]
   customerAddresses CustomerAddress[]
+  refreshTokens     RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Restaurant {
