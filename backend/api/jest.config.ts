@@ -34,6 +34,7 @@ const config: Config = {
     ...pathsToModuleNameMapper(paths, {
       prefix: '<rootDir>/',
     }),
+    '^@nestjs/throttler$': '<rootDir>/test/mocks/throttler.ts',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
 
