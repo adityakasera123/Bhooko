@@ -6,6 +6,7 @@ import Joi from 'joi';
 import { UsersModule } from './users/users.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
+import { FoodModule } from './food/food.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -54,6 +55,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UsersModule,
     AddressesModule,
     RestaurantsModule,
+    FoodModule,
   ],
   controllers: [AppController],
   providers: [
