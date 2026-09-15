@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import Joi from 'joi';
 import { UsersModule } from './users/users.module';
+import { AddressesModule } from './addresses/addresses.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -50,6 +51,7 @@ import { PrismaModule } from './prisma/prisma.module';
     HealthModule,
     AuthModule,
     UsersModule,
+    AddressesModule,
   ],
   controllers: [AppController],
   providers: [
