@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
+import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 
 @Injectable()
 export class CartService {
@@ -122,6 +124,59 @@ export class CartService {
       data: {
         cartId: cart.id,
         foodItemId: foodItem.id,
+        quantity: dto.quantity,
+      },
+      include: {
+        foodItem: {
+          include: {
+            restaurant: true,
+          },
+        },
+      },
+    });
+  }
+
+   async updateCartItem(
+    userId: string,
+    cartItemId: string,
+    dto: UpdateCartItemDto,
+  ) {
+    const cartItem = await this.prisma.cartItem.findUnique({
+      where: {
+        id: cartItemId,
+      },
+      include: {
+        cart: true,
+      },
+    });
+
+    if (!cartItem) {
+      throw new NotFoundException('Cart item not found');
+    }
+
+    if (cartItem.cart.customerId !== userId) {
+      throw new ForbiddenException('You do not have access to this cart item');
+    }
+
+    const foodItem = await this.prisma.foodItem.findUnique({
+      where: {
+        id: cartItem.foodItemId,
+      },
+    });
+
+    if (!foodItem) {
+      throw new NotFoundException('Food item not found');
+    }
+
+    if (!foodItem.isAvailable) {
+      throw new BadRequestException('Food item is not available');
+    }
+
+    return this.prisma.cartItem.update({
+      where: {
+        id: cartItemId,
+      },
+      data: {
         quantity: dto.quantity,
       },
       include: {

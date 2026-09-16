@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -11,6 +13,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { CartService } from './cart.service';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
+import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 
 @Controller('cart')
 export class CartController {
@@ -29,5 +32,20 @@ export class CartController {
     @Body() dto: AddCartItemDto,
   ) {
     return this.cartService.addCartItem(user.userId, dto);
+  }
+
+
+  @Patch('items/:id')
+  @UseGuards(JwtAuthGuard)
+  async updateCartItem(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') cartItemId: string,
+    @Body() dto: UpdateCartItemDto,
+  ) {
+    return this.cartService.updateCartItem(
+      user.userId,
+      cartItemId,
+      dto,
+    );
   }
 }
