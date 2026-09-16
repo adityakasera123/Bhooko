@@ -217,4 +217,28 @@ export class CartService {
       message: 'Cart item removed successfully',
     };
   }
+
+  async clearCart(userId: string) {
+    const cart = await this.prisma.cart.findUnique({
+      where: {
+        customerId: userId,
+      },
+    });
+
+    if (!cart) {
+      return {
+        message: 'Cart cleared successfully',
+      };
+    }
+
+    await this.prisma.cartItem.deleteMany({
+      where: {
+        cartId: cart.id,
+      },
+    });
+
+    return {
+      message: 'Cart cleared successfully',
+    };
+  }
 }

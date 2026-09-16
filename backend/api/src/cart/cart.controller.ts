@@ -57,4 +57,10 @@ export class CartController {
   ) {
     return this.cartService.removeCartItem(user.userId, cartItemId);
   }
+
+  @Delete()
+  @UseGuards(JwtAuthGuard)
+  async clearCart(@CurrentUser() user: CurrentUserPayload) {
+    return this.cartService.clearCart(user.userId);
+  }
 }
