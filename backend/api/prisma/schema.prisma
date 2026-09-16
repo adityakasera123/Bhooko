@@ -37,6 +37,7 @@ model User {
   restaurants       Restaurant[]
   customerAddresses CustomerAddress[]
   refreshTokens     RefreshToken[]
+  cart              Cart?
 }
 
 model RefreshToken {
@@ -133,7 +134,33 @@ model FoodItem {
 
   restaurant Restaurant   @relation(fields: [restaurantId], references: [id])
   category   FoodCategory @relation(fields: [categoryId], references: [id])
+  cartItems CartItem[]
 
   @@index([restaurantId])
   @@index([categoryId])
+}
+
+model Cart {
+  id         String   @id @default(uuid())
+  customerId String   @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer User       @relation(fields: [customerId], references: [id])
+  items    CartItem[]
+}
+
+model CartItem {
+  id         String   @id @default(uuid())
+  cartId     String
+  foodItemId String
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  cart     Cart     @relation(fields: [cartId], references: [id])
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id])
+
+  @@unique([cartId, foodItemId])
+  @@index([foodItemId])
 }
