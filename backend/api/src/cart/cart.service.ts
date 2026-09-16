@@ -1,5 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
 import { PrismaService } from '../prisma/prisma.service';
+import { AddCartItemDto } from './dto/add-cart-item.dto';
 
 @Injectable()
 export class CartService {
@@ -58,5 +64,73 @@ export class CartService {
       createdAt: cart.createdAt,
       updatedAt: cart.updatedAt,
     };
+  }
+
+    async addCartItem(userId: string, dto: AddCartItemDto) {
+    const foodItem = await this.prisma.foodItem.findUnique({
+      where: {
+        id: dto.foodItemId,
+      },
+    });
+
+    if (!foodItem) {
+      throw new NotFoundException('Food item not found');
+    }
+
+    if (!foodItem.isAvailable) {
+      throw new BadRequestException('Food item is not available');
+    }
+
+    const cart = await this.prisma.cart.upsert({
+      where: {
+        customerId: userId,
+      },
+      create: {
+        customerId: userId,
+      },
+      update: {},
+    });
+
+    const existingItem = await this.prisma.cartItem.findUnique({
+      where: {
+        cartId_foodItemId: {
+          cartId: cart.id,
+          foodItemId: dto.foodItemId,
+        },
+      },
+    });
+
+    if (existingItem) {
+      return this.prisma.cartItem.update({
+        where: {
+          id: existingItem.id,
+        },
+        data: {
+          quantity: existingItem.quantity + dto.quantity,
+        },
+        include: {
+          foodItem: {
+            include: {
+              restaurant: true,
+            },
+          },
+        },
+      });
+    }
+
+    return this.prisma.cartItem.create({
+      data: {
+        cartId: cart.id,
+        foodItemId: foodItem.id,
+        quantity: dto.quantity,
+      },
+      include: {
+        foodItem: {
+          include: {
+            restaurant: true,
+          },
+        },
+      },
+    });
   }
 }
