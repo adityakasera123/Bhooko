@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -34,7 +35,6 @@ export class CartController {
     return this.cartService.addCartItem(user.userId, dto);
   }
 
-
   @Patch('items/:id')
   @UseGuards(JwtAuthGuard)
   async updateCartItem(
@@ -47,5 +47,14 @@ export class CartController {
       cartItemId,
       dto,
     );
+  }
+
+  @Delete('items/:id')
+  @UseGuards(JwtAuthGuard)
+  async removeCartItem(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') cartItemId: string,
+  ) {
+    return this.cartService.removeCartItem(user.userId, cartItemId);
   }
 }

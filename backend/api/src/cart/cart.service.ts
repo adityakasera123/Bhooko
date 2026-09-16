@@ -188,4 +188,33 @@ export class CartService {
       },
     });
   }
+
+  async removeCartItem(userId: string, cartItemId: string) {
+    const cartItem = await this.prisma.cartItem.findUnique({
+      where: {
+        id: cartItemId,
+      },
+      include: {
+        cart: true,
+      },
+    });
+
+    if (!cartItem) {
+      throw new NotFoundException('Cart item not found');
+    }
+
+    if (cartItem.cart.customerId !== userId) {
+      throw new ForbiddenException('You do not have access to this cart item');
+    }
+
+    await this.prisma.cartItem.delete({
+      where: {
+        id: cartItemId,
+      },
+    });
+
+    return {
+      message: 'Cart item removed successfully',
+    };
+  }
 }
