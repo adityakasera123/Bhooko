@@ -103,6 +103,11 @@ export class CartService {
     });
 
     if (existingItem) {
+      const newQuantity = existingItem.quantity + dto.quantity;
+
+      if (newQuantity > 20) {
+        throw new BadRequestException('Cart item quantity cannot exceed 20');
+      }
       return this.prisma.cartItem.update({
         where: {
           id: existingItem.id,
