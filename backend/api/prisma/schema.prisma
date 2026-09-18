@@ -24,6 +24,17 @@ enum FoodType {
   NON_VEG
   EGG
 }
+
+enum OrderStatus {
+  CREATED
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -38,14 +49,15 @@ model User {
   customerAddresses CustomerAddress[]
   refreshTokens     RefreshToken[]
   cart              Cart?
+  orders            Order[]
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   revokedAt DateTime?
 
   user User @relation(fields: [userId], references: [id])
@@ -54,50 +66,51 @@ model RefreshToken {
 }
 
 model Restaurant {
-  id          String           @id @default(uuid())
-  ownerId     String
-  name        String
-  description String
-  imageUrl    String
-  latitude    Float
-  longitude   Float
+  id           String           @id @default(uuid())
+  ownerId      String
+  name         String
+  description  String
+  imageUrl     String
+  latitude     Float
+  longitude    Float
   addressLine1 String
   addressLine2 String?
-  area        String
-  city        String
-  state       String
-  pincode     String
-  status      RestaurantStatus
-  rating      Float            @default(0)
-  reviewCount Int              @default(0)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  area         String
+  city         String
+  state        String
+  pincode      String
+  status       RestaurantStatus
+  rating       Float            @default(0)
+  reviewCount  Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   owner      User           @relation(fields: [ownerId], references: [id])
   categories FoodCategory[]
   foodItems  FoodItem[]
+  orders     Order[]
 
   @@index([ownerId])
 }
 
 model CustomerAddress {
-  id                 String   @id @default(uuid())
-  customerId         String
-  label              String
-  line1              String
-  line2              String?
-  area               String
-  city               String
-  state              String
-  pincode             String
-  latitude            Float
-  longitude           Float
-  contactName         String
-  contactPhone        String
-  isDefault           Boolean  @default(false)
+  id                   String   @id @default(uuid())
+  customerId           String
+  label                String
+  line1                String
+  line2                String?
+  area                 String
+  city                 String
+  state                String
+  pincode              String
+  latitude             Float
+  longitude            Float
+  contactName          String
+  contactPhone         String
+  isDefault            Boolean  @default(false)
   deliveryInstructions String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   customer User @relation(fields: [customerId], references: [id])
 
@@ -134,7 +147,8 @@ model FoodItem {
 
   restaurant Restaurant   @relation(fields: [restaurantId], references: [id])
   category   FoodCategory @relation(fields: [categoryId], references: [id])
-  cartItems CartItem[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
 
   @@index([restaurantId])
   @@index([categoryId])
@@ -162,5 +176,69 @@ model CartItem {
   foodItem FoodItem @relation(fields: [foodItemId], references: [id])
 
   @@unique([cartId, foodItemId])
+  @@index([foodItemId])
+}
+
+model Order {
+  id           String      @id @default(uuid())
+  customerId   String
+  restaurantId String
+  status       OrderStatus @default(CREATED)
+
+  // Historical restaurant snapshot
+  restaurantName String
+
+  // Historical delivery address snapshot
+  deliveryAddressLabel   String
+  deliveryContactName    String
+  deliveryContactPhone   String
+  deliveryAddressLine1   String
+  deliveryAddressLine2   String?
+  deliveryAddressArea    String
+  deliveryAddressCity    String
+  deliveryAddressState   String
+  deliveryAddressPincode String
+  deliveryLatitude       Float
+  deliveryLongitude      Float
+  deliveryInstructions   String?
+
+  // Authoritative order totals
+  itemSubtotalInPaise Int
+  deliveryFeeInPaise  Int @default(0)
+  platformFeeInPaise  Int @default(0)
+  taxInPaise          Int @default(0)
+  discountInPaise     Int @default(0)
+  totalInPaise        Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer   User        @relation(fields: [customerId], references: [id])
+  restaurant Restaurant  @relation(fields: [restaurantId], references: [id])
+  items      OrderItem[]
+
+  @@index([customerId])
+  @@index([restaurantId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id         String  @id @default(uuid())
+  orderId    String
+  foodItemId String?
+
+  // Historical food snapshot
+  foodItemName        String
+  unitPriceInPaise    Int
+  quantity            Int
+  itemSubtotalInPaise Int
+
+  createdAt DateTime @default(now())
+
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  foodItem FoodItem? @relation(fields: [foodItemId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
   @@index([foodItemId])
 }
