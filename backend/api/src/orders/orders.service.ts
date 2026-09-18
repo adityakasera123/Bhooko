@@ -191,4 +191,36 @@ async createOrder(userId: string, dto: CreateOrderDto) {
     };
   });
 }
+
+async getMyOrders(userId: string) {
+  return this.prisma.order.findMany({
+    where: {
+      customerId: userId,
+    },
+    include: {
+      items: true,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+}
+
+async getOrderById(userId: string, orderId: string) {
+  const order = await this.prisma.order.findFirst({
+    where: {
+      id: orderId,
+      customerId: userId,
+    },
+    include: {
+      items: true,
+    },
+  });
+
+  if (!order) {
+    throw new NotFoundException('Order not found');
+  }
+
+  return order;
+}
 }

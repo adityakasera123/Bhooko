@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -23,4 +25,19 @@ export class OrdersController {
   ) {
     return this.ordersService.createOrder(user.userId, dto);
   }
+
+  @Get()
+@UseGuards(JwtAuthGuard)
+async getMyOrders(@CurrentUser() user: CurrentUserPayload) {
+  return this.ordersService.getMyOrders(user.userId);
+}
+
+@Get(':id')
+@UseGuards(JwtAuthGuard)
+async getOrderById(
+  @CurrentUser() user: CurrentUserPayload,
+  @Param('id') orderId: string,
+) {
+  return this.ordersService.getOrderById(user.userId, orderId);
+}
 }
