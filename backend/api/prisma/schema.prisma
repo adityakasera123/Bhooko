@@ -35,6 +35,15 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PAID
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -124,7 +133,7 @@ model FoodCategory {
   displayOrder Int      @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt   DateTime @updatedAt
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   foodItems  FoodItem[]
@@ -143,7 +152,7 @@ model FoodItem {
   isAvailable  Boolean  @default(true)
   foodType     FoodType
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt   DateTime @updatedAt
 
   restaurant Restaurant   @relation(fields: [restaurantId], references: [id])
   category   FoodCategory @relation(fields: [categoryId], references: [id])
@@ -206,9 +215,9 @@ model Order {
   itemSubtotalInPaise Int
   deliveryFeeInPaise  Int @default(0)
   platformFeeInPaise  Int @default(0)
-  taxInPaise          Int @default(0)
-  discountInPaise     Int @default(0)
-  totalInPaise        Int
+  taxInPaise           Int @default(0)
+  discountInPaise      Int @default(0)
+  totalInPaise         Int
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -216,6 +225,7 @@ model Order {
   customer   User        @relation(fields: [customerId], references: [id])
   restaurant Restaurant  @relation(fields: [restaurantId], references: [id])
   items      OrderItem[]
+  payment    Payment?
 
   @@index([customerId])
   @@index([restaurantId])
@@ -241,4 +251,22 @@ model OrderItem {
 
   @@index([orderId])
   @@index([foodItemId])
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String        @unique
+  status            PaymentStatus @default(CREATED)
+  amountInPaise     Int
+  currency          String        @default("INR")
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?       @unique
+  razorpaySignature String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@index([status])
 }
