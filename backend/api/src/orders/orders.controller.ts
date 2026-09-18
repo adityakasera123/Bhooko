@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -11,6 +12,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -39,5 +41,20 @@ async getOrderById(
   @Param('id') orderId: string,
 ) {
   return this.ordersService.getOrderById(user.userId, orderId);
+}
+
+@Patch(':id/status')
+@UseGuards(JwtAuthGuard)
+async updateOrderStatus(
+  @CurrentUser() user: CurrentUserPayload,
+  @Param('id') orderId: string,
+  @Body() dto: UpdateOrderStatusDto,
+) {
+  return this.ordersService.updateOrderStatus(
+    user.userId,
+    user.role,
+    orderId,
+    dto,
+  );
 }
 }

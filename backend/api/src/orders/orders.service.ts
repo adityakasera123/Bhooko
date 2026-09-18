@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
 @Injectable()
 export class OrdersService {
@@ -222,5 +224,67 @@ async getOrderById(userId: string, orderId: string) {
   }
 
   return order;
+}
+
+async updateOrderStatus(
+  userId: string,
+  role: string,
+  orderId: string,
+  dto: UpdateOrderStatusDto,
+) {
+  const order = await this.prisma.order.findUnique({
+    where: { id: orderId },
+  });
+
+  if (!order) {
+    throw new NotFoundException('Order not found');
+  }
+
+  if (role === 'CUSTOMER') {
+  throw new ForbiddenException(
+    'Customers are not allowed to update order status',
+  );
+}
+
+if (role === 'RESTAURANT') {
+  const restaurant = await this.prisma.restaurant.findUnique({
+    where: { id: order.restaurantId },
+  });
+
+  if (!restaurant || restaurant.ownerId !== userId) {
+    throw new ForbiddenException(
+      'You are not allowed to update this restaurant order',
+    );
+  }
+}
+
+  if (order.customerId !== userId) {
+    throw new ForbiddenException('You are not allowed to update this order');
+  }
+
+  const allowedTransitions: Record<string, string[]> = {
+  CREATED: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['PREPARING', 'CANCELLED'],
+  PREPARING: ['READY'],
+  READY: ['OUT_FOR_DELIVERY'],
+  OUT_FOR_DELIVERY: ['DELIVERED'],
+  DELIVERED: [],
+  CANCELLED: [],
+};
+
+const allowedNextStatuses = allowedTransitions[order.status] ?? [];
+
+if (!allowedNextStatuses.includes(dto.status)) {
+  throw new ForbiddenException(
+    `Order cannot move from ${order.status} to ${dto.status}`,
+  );
+}
+
+  return this.prisma.order.update({
+    where: { id: orderId },
+    data: {
+      status: dto.status,
+    },
+  });
 }
 }
