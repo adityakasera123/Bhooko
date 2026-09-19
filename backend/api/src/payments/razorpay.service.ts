@@ -1,4 +1,9 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
 import Razorpay from 'razorpay';
 
 @Injectable()
@@ -27,5 +32,32 @@ export class RazorpayService {
       currency: 'INR',
       receipt,
     });
+  }
+
+  verifyWebhookSignature(
+    rawBody: Buffer,
+    signature: string,
+  ): boolean {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (!webhookSecret || !signature) {
+      return false;
+    }
+
+    const expectedSignature = createHmac(
+      'sha256',
+      webhookSecret,
+    )
+      .update(rawBody)
+      .digest('hex');
+
+    const expected = Buffer.from(expectedSignature, 'utf8');
+    const received = Buffer.from(signature, 'utf8');
+
+    if (expected.length !== received.length) {
+      return false;
+    }
+
+    return timingSafeEqual(expected, received);
   }
 }

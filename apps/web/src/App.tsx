@@ -7,7 +7,7 @@ import {
 import { loadRazorpayScript } from './lib/razorpay';
 
 const ORDER_ID =
-  'a2396366-7066-4e42-9c12-480575c8567b';
+  '631f70fc-9d8a-4950-aa7b-8569c925e805';
 
 const ACCESS_TOKEN =
 localStorage.getItem('bhooko_access_token') ?? '';

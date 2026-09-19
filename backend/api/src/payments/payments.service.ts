@@ -301,4 +301,177 @@ export class PaymentsService {
       ),
     };
   }
+
+  async handleWebhook(body: Record<string, unknown>) {
+    const event =
+      typeof body.event === 'string' ? body.event : '';
+
+    const payload =
+      body.payload &&
+      typeof body.payload === 'object'
+        ? (body.payload as Record<string, unknown>)
+        : {};
+
+    const paymentPayload =
+      payload.payment &&
+      typeof payload.payment === 'object'
+        ? (payload.payment as Record<string, unknown>)
+        : {};
+
+    const paymentEntity =
+      paymentPayload.entity &&
+      typeof paymentPayload.entity === 'object'
+        ? (paymentPayload.entity as Record<string, unknown>)
+        : {};
+
+    const razorpayOrderId =
+      typeof paymentEntity.order_id === 'string'
+        ? paymentEntity.order_id
+        : null;
+
+    const razorpayPaymentId =
+      typeof paymentEntity.id === 'string'
+        ? paymentEntity.id
+        : null;
+
+    const amount =
+      typeof paymentEntity.amount === 'number'
+        ? paymentEntity.amount
+        : null;
+
+    if (!razorpayOrderId) {
+      return {
+        received: true,
+        processed: false,
+        reason: 'Razorpay order ID not found in webhook payload',
+      };
+    }
+
+    const paymentTransaction =
+      await this.prisma.paymentTransaction.findUnique({
+        where: {
+          razorpayOrderId,
+        },
+      });
+
+    if (!paymentTransaction) {
+      return {
+        received: true,
+        processed: false,
+        reason: 'Payment transaction not found',
+      };
+    }
+
+    if (
+      amount !== null &&
+      amount !== paymentTransaction.amountInPaise
+    ) {
+      throw new BadRequestException(
+        'Webhook payment amount does not match the payment transaction',
+      );
+    }
+
+    if (event === 'payment.captured') {
+      if (paymentTransaction.status === 'PAID') {
+        return {
+          received: true,
+          processed: false,
+          reason: 'Payment already marked as PAID',
+          paymentTransactionId: paymentTransaction.id,
+        };
+      }
+
+      if (
+        paymentTransaction.status === 'REFUNDED' ||
+        paymentTransaction.status === 'REFUND_PENDING'
+      ) {
+        return {
+          received: true,
+          processed: false,
+          reason: `Payment transaction is already in ${paymentTransaction.status} state`,
+          paymentTransactionId: paymentTransaction.id,
+        };
+      }
+
+      const updatedPayment =
+        await this.prisma.$transaction(async (tx) => {
+          const updated =
+            await tx.paymentTransaction.update({
+              where: {
+                id: paymentTransaction.id,
+              },
+              data: {
+                status: 'PAID',
+                razorpayPaymentId:
+                  razorpayPaymentId ??
+                  paymentTransaction.razorpayPaymentId,
+              },
+            });
+
+          await tx.order.updateMany({
+            where: {
+              paymentTransactionId: paymentTransaction.id,
+              status: 'CREATED',
+            },
+            data: {
+              status: 'CONFIRMED',
+            },
+          });
+
+          return updated;
+        });
+
+      return {
+        received: true,
+        processed: true,
+        event,
+        paymentTransactionId: updatedPayment.id,
+        razorpayPaymentId: updatedPayment.razorpayPaymentId,
+        status: updatedPayment.status,
+      };
+    }
+
+    if (event === 'payment.failed') {
+      if (
+        paymentTransaction.status === 'PAID' ||
+        paymentTransaction.status === 'REFUND_PENDING' ||
+        paymentTransaction.status === 'REFUNDED'
+      ) {
+        return {
+          received: true,
+          processed: false,
+          reason: `Payment transaction is already in ${paymentTransaction.status} state`,
+          paymentTransactionId: paymentTransaction.id,
+        };
+      }
+
+      const updatedPayment =
+        await this.prisma.paymentTransaction.update({
+          where: {
+            id: paymentTransaction.id,
+          },
+          data: {
+            status: 'FAILED',
+            razorpayPaymentId:
+              razorpayPaymentId ??
+              paymentTransaction.razorpayPaymentId,
+          },
+        });
+
+      return {
+        received: true,
+        processed: true,
+        event,
+        paymentTransactionId: updatedPayment.id,
+        razorpayPaymentId: updatedPayment.razorpayPaymentId,
+        status: updatedPayment.status,
+      };
+    }
+
+    return {
+      received: true,
+      processed: false,
+      reason: `Event ${event || 'unknown'} is not handled`,
+    };
+  }
 }
