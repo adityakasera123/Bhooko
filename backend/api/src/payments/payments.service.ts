@@ -42,11 +42,43 @@ export class PaymentsService {
       );
     }
 
-    const alreadyLinkedOrder = orders.find(
+    const alreadyLinkedOrders = orders.filter(
       (order) => order.paymentTransactionId !== null,
     );
 
-    if (alreadyLinkedOrder) {
+    if (alreadyLinkedOrders.length > 0) {
+      const existingPaymentTransactionId =
+        alreadyLinkedOrders[0].paymentTransactionId;
+
+      const samePaymentTransaction = orders.every(
+        (order) =>
+          order.paymentTransactionId === existingPaymentTransactionId,
+      );
+
+      if (!samePaymentTransaction || !existingPaymentTransactionId) {
+        throw new ConflictException(
+          'One or more orders are already linked to different payment transactions',
+        );
+      }
+
+      const existingPayment =
+        alreadyLinkedOrders[0].paymentTransaction;
+
+      if (
+        existingPayment &&
+        existingPayment.status === 'PENDING' &&
+        existingPayment.razorpayOrderId
+      ) {
+        return {
+          paymentTransactionId: existingPayment.id,
+          razorpayOrderId: existingPayment.razorpayOrderId,
+          amountInPaise: existingPayment.amountInPaise,
+          currency: existingPayment.currency,
+          keyId: process.env.RAZORPAY_KEY_ID,
+          orderIds: uniqueOrderIds,
+        };
+      }
+
       throw new ConflictException(
         'One or more orders are already linked to a payment transaction',
       );
