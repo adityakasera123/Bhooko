@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHmac } from 'node:crypto';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
+import { VerifyPaymentDto } from './dto/verify-payment.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -122,5 +124,117 @@ export class PaymentsService {
 
       throw error;
     }
+  }
+
+  async verifyPayment(
+    userId: string,
+    dto: VerifyPaymentDto,
+  ) {
+    const paymentTransaction =
+      await this.prisma.paymentTransaction.findFirst({
+        where: {
+          id: dto.paymentTransactionId,
+          customerId: userId,
+        },
+        include: {
+          orders: true,
+        },
+      });
+
+    if (!paymentTransaction) {
+      throw new NotFoundException(
+        'Payment transaction not found or does not belong to you',
+      );
+    }
+
+    if (!paymentTransaction.razorpayOrderId) {
+      throw new BadRequestException(
+        'Payment transaction is not linked to a Razorpay order',
+      );
+    }
+
+    if (paymentTransaction.razorpayOrderId !== dto.razorpayOrderId) {
+      throw new BadRequestException(
+        'Razorpay order ID does not match the payment transaction',
+      );
+    }
+
+    if (paymentTransaction.status === 'PAID') {
+      return {
+        message: 'Payment already verified',
+        paymentTransactionId: paymentTransaction.id,
+        status: paymentTransaction.status,
+        orderIds: paymentTransaction.orders.map(
+          (order) => order.id,
+        ),
+      };
+    }
+
+    if (paymentTransaction.status !== 'PENDING') {
+      throw new BadRequestException(
+        `Payment transaction cannot be verified from status ${paymentTransaction.status}`,
+      );
+    }
+
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keySecret) {
+      throw new BadRequestException(
+        'Razorpay secret is not configured',
+      );
+    }
+
+    const expectedSignature = createHmac(
+      'sha256',
+      keySecret,
+    )
+      .update(
+        `${dto.razorpayOrderId}|${dto.razorpayPaymentId}`,
+      )
+      .digest('hex');
+
+    if (expectedSignature !== dto.razorpaySignature) {
+      throw new BadRequestException(
+        'Invalid Razorpay payment signature',
+      );
+    }
+
+    const updatedPaymentTransaction =
+      await this.prisma.$transaction(async (tx) => {
+        const updatedPayment =
+          await tx.paymentTransaction.update({
+            where: {
+              id: paymentTransaction.id,
+            },
+            data: {
+              status: 'PAID',
+              razorpayPaymentId: dto.razorpayPaymentId,
+              razorpaySignature: dto.razorpaySignature,
+            },
+          });
+
+        await tx.order.updateMany({
+          where: {
+            paymentTransactionId: paymentTransaction.id,
+            status: 'CREATED',
+          },
+          data: {
+            status: 'CONFIRMED',
+          },
+        });
+
+        return updatedPayment;
+      });
+
+    return {
+      message: 'Payment verified successfully',
+      paymentTransactionId: updatedPaymentTransaction.id,
+      razorpayOrderId: updatedPaymentTransaction.razorpayOrderId,
+      razorpayPaymentId: updatedPaymentTransaction.razorpayPaymentId,
+      status: updatedPaymentTransaction.status,
+      orderIds: paymentTransaction.orders.map(
+        (order) => order.id,
+      ),
+    };
   }
 }

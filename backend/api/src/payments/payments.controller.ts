@@ -9,6 +9,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { PaymentsService } from './payments.service';
 
 @Controller('payments')
@@ -24,6 +25,18 @@ export class PaymentsController {
     return this.paymentsService.createPayment(
       user.userId,
       dto.orderIds,
+    );
+  }
+
+  @Post('verify')
+  @UseGuards(JwtAuthGuard)
+  async verifyPayment(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: VerifyPaymentDto,
+  ) {
+    return this.paymentsService.verifyPayment(
+      user.userId,
+      dto,
     );
   }
 }
