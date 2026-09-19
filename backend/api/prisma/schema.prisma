@@ -54,11 +54,12 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  restaurants       Restaurant[]
-  customerAddresses CustomerAddress[]
-  refreshTokens     RefreshToken[]
-  cart              Cart?
-  orders            Order[]
+  restaurants        Restaurant[]
+  customerAddresses  CustomerAddress[]
+  refreshTokens      RefreshToken[]
+  cart               Cart?
+  orders             Order[]
+  paymentTransactions PaymentTransaction[]
 }
 
 model RefreshToken {
@@ -89,10 +90,10 @@ model Restaurant {
   state        String
   pincode      String
   status       RestaurantStatus
-  rating       Float            @default(0)
-  reviewCount  Int              @default(0)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  rating       Float              @default(0)
+  reviewCount  Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   owner      User           @relation(fields: [ownerId], references: [id])
   categories FoodCategory[]
@@ -219,18 +220,22 @@ model Order {
   discountInPaise      Int @default(0)
   totalInPaise         Int
 
+  // Combined checkout/payment transaction
+  paymentTransactionId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  customer   User        @relation(fields: [customerId], references: [id])
-  restaurant Restaurant  @relation(fields: [restaurantId], references: [id])
-  items      OrderItem[]
-  payment    Payment?
+  customer           User                @relation(fields: [customerId], references: [id])
+  restaurant         Restaurant          @relation(fields: [restaurantId], references: [id])
+  items              OrderItem[]
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
 
   @@index([customerId])
   @@index([restaurantId])
   @@index([status])
   @@index([createdAt])
+  @@index([paymentTransactionId])
 }
 
 model OrderItem {
@@ -253,9 +258,9 @@ model OrderItem {
   @@index([foodItemId])
 }
 
-model Payment {
+model PaymentTransaction {
   id                String        @id @default(uuid())
-  orderId           String        @unique
+  customerId        String
   status            PaymentStatus @default(CREATED)
   amountInPaise     Int
   currency          String        @default("INR")
@@ -265,8 +270,9 @@ model Payment {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id])
+  customer User    @relation(fields: [customerId], references: [id])
+  orders   Order[]
 
-  @@index([orderId])
+  @@index([customerId])
   @@index([status])
 }

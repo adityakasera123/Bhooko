@@ -1,6 +1,8 @@
-import { IsUUID } from 'class-validator';
+import { ArrayMinSize, IsArray, IsUUID } from 'class-validator';
 
 export class CreatePaymentDto {
-  @IsUUID()
-  orderId!: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  orderIds!: string[];
 }
