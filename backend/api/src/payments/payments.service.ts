@@ -24,111 +24,143 @@ export class PaymentsService {
       throw new BadRequestException('At least one order is required');
     }
 
-    const orders = await this.prisma.order.findMany({
-      where: {
-        id: {
-          in: uniqueOrderIds,
+    const result = await this.prisma.$transaction(async (tx) => {
+      const orders = await tx.order.findMany({
+        where: {
+          id: {
+            in: uniqueOrderIds,
+          },
+          customerId: userId,
         },
-        customerId: userId,
-      },
-      include: {
-        paymentTransaction: true,
-      },
-    });
+        include: {
+          paymentTransaction: true,
+        },
+      });
 
-    if (orders.length !== uniqueOrderIds.length) {
-      throw new NotFoundException(
-        'One or more orders were not found or do not belong to you',
-      );
-    }
-
-    const alreadyLinkedOrders = orders.filter(
-      (order) => order.paymentTransactionId !== null,
-    );
-
-    if (alreadyLinkedOrders.length > 0) {
-      const existingPaymentTransactionId =
-        alreadyLinkedOrders[0].paymentTransactionId;
-
-      const samePaymentTransaction = orders.every(
-        (order) =>
-          order.paymentTransactionId === existingPaymentTransactionId,
-      );
-
-      if (!samePaymentTransaction || !existingPaymentTransactionId) {
-        throw new ConflictException(
-          'One or more orders are already linked to different payment transactions',
+      if (orders.length !== uniqueOrderIds.length) {
+        throw new NotFoundException(
+          'One or more orders were not found or do not belong to you',
         );
       }
 
-      const existingPayment =
-        alreadyLinkedOrders[0].paymentTransaction;
+      const alreadyLinkedOrders = orders.filter(
+        (order) => order.paymentTransactionId !== null,
+      );
 
-      if (
-        existingPayment &&
-        existingPayment.status === 'PENDING' &&
-        existingPayment.razorpayOrderId
-      ) {
-        return {
-          paymentTransactionId: existingPayment.id,
-          razorpayOrderId: existingPayment.razorpayOrderId,
-          amountInPaise: existingPayment.amountInPaise,
-          currency: existingPayment.currency,
-          keyId: process.env.RAZORPAY_KEY_ID,
-          orderIds: uniqueOrderIds,
-        };
+      if (alreadyLinkedOrders.length > 0) {
+        const existingPaymentTransactionId =
+          alreadyLinkedOrders[0].paymentTransactionId;
+
+        const samePaymentTransaction = orders.every(
+          (order) =>
+            order.paymentTransactionId === existingPaymentTransactionId,
+        );
+
+        if (!samePaymentTransaction || !existingPaymentTransactionId) {
+          throw new ConflictException(
+            'One or more orders are already linked to different payment transactions',
+          );
+        }
+
+        const existingPayment =
+          alreadyLinkedOrders[0].paymentTransaction;
+
+        if (
+          existingPayment &&
+          existingPayment.status === 'PENDING' &&
+          existingPayment.razorpayOrderId
+        ) {
+          return {
+            type: 'existing' as const,
+            paymentTransactionId: existingPayment.id,
+            razorpayOrderId: existingPayment.razorpayOrderId,
+            amountInPaise: existingPayment.amountInPaise,
+            currency: existingPayment.currency,
+            keyId: process.env.RAZORPAY_KEY_ID,
+            orderIds: uniqueOrderIds,
+          };
+        }
+
+        throw new ConflictException(
+          'One or more orders are already linked to a payment transaction',
+        );
       }
 
-      throw new ConflictException(
-        'One or more orders are already linked to a payment transaction',
+      const nonPayableOrder = orders.find(
+        (order) =>
+          order.status === 'CANCELLED' ||
+          order.status === 'DELIVERED',
       );
-    }
 
-    const nonPayableOrder = orders.find(
-      (order) =>
-        order.status === 'CANCELLED' ||
-        order.status === 'DELIVERED',
-    );
+      if (nonPayableOrder) {
+        throw new BadRequestException(
+          `Order ${nonPayableOrder.id} is not eligible for payment`,
+        );
+      }
 
-    if (nonPayableOrder) {
-      throw new BadRequestException(
-        `Order ${nonPayableOrder.id} is not eligible for payment`,
+      const amountInPaise = orders.reduce(
+        (total, order) => total + order.totalInPaise,
+        0,
       );
-    }
 
-    const amountInPaise = orders.reduce(
-      (total, order) => total + order.totalInPaise,
-      0,
-    );
+      if (amountInPaise <= 0) {
+        throw new BadRequestException(
+          'Payment amount must be greater than zero',
+        );
+      }
 
-    if (amountInPaise <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero');
-    }
+      const paymentTransaction =
+        await tx.paymentTransaction.create({
+          data: {
+            customerId: userId,
+            status: 'CREATED',
+            amountInPaise,
+            currency: 'INR',
+          },
+        });
 
-    const paymentTransaction = await this.prisma.paymentTransaction.create({
-      data: {
-        customerId: userId,
-        status: 'CREATED',
-        amountInPaise,
-        currency: 'INR',
-        orders: {
-          connect: uniqueOrderIds.map((id) => ({
-            id,
-          })),
+      const claimedOrders = await tx.order.updateMany({
+        where: {
+          id: {
+            in: uniqueOrderIds,
+          },
+          customerId: userId,
+          paymentTransactionId: null,
         },
-      },
+        data: {
+          paymentTransactionId: paymentTransaction.id,
+        },
+      });
+
+      if (claimedOrders.count !== uniqueOrderIds.length) {
+        throw new ConflictException(
+          'One or more orders were claimed by another payment transaction',
+        );
+      }
+
+      return {
+        type: 'new' as const,
+        paymentTransactionId: paymentTransaction.id,
+        amountInPaise,
+        currency: paymentTransaction.currency,
+        orderIds: uniqueOrderIds,
+      };
     });
+
+    if (result.type === 'existing') {
+      return result;
+    }
 
     try {
       const razorpayOrder = await this.razorpayService.createOrder(
-        amountInPaise,
-        paymentTransaction.id,
+        result.amountInPaise,
+        result.paymentTransactionId,
       );
 
       const updatedPaymentTransaction =
         await this.prisma.paymentTransaction.update({
           where: {
-            id: paymentTransaction.id,
+            id: result.paymentTransactionId,
           },
           data: {
             razorpayOrderId: razorpayOrder.id,
@@ -142,12 +174,12 @@ export class PaymentsService {
         amountInPaise: updatedPaymentTransaction.amountInPaise,
         currency: updatedPaymentTransaction.currency,
         keyId: process.env.RAZORPAY_KEY_ID,
-        orderIds: uniqueOrderIds,
+        orderIds: result.orderIds,
       };
     } catch (error) {
       await this.prisma.paymentTransaction.update({
         where: {
-          id: paymentTransaction.id,
+          id: result.paymentTransactionId,
         },
         data: {
           status: 'FAILED',
