@@ -47,44 +47,62 @@ export class PaymentsService {
         (order) => order.paymentTransactionId !== null,
       );
 
-      if (alreadyLinkedOrders.length > 0) {
-        const existingPaymentTransactionId =
-          alreadyLinkedOrders[0].paymentTransactionId;
+     if (alreadyLinkedOrders.length > 0) {
+  const existingPaymentTransactionId =
+    alreadyLinkedOrders[0].paymentTransactionId;
 
-        const samePaymentTransaction = orders.every(
-          (order) =>
-            order.paymentTransactionId === existingPaymentTransactionId,
-        );
+  const samePaymentTransaction = orders.every(
+    (order) =>
+      order.paymentTransactionId === existingPaymentTransactionId,
+  );
 
-        if (!samePaymentTransaction || !existingPaymentTransactionId) {
-          throw new ConflictException(
-            'One or more orders are already linked to different payment transactions',
-          );
-        }
+  if (!samePaymentTransaction || !existingPaymentTransactionId) {
+    throw new ConflictException(
+      'One or more orders are already linked to different payment transactions',
+    );
+  }
 
-        const existingPayment =
-          alreadyLinkedOrders[0].paymentTransaction;
+  const existingPayment =
+    alreadyLinkedOrders[0].paymentTransaction;
 
-        if (
-          existingPayment &&
-          existingPayment.status === 'PENDING' &&
-          existingPayment.razorpayOrderId
-        ) {
-          return {
-            type: 'existing' as const,
-            paymentTransactionId: existingPayment.id,
-            razorpayOrderId: existingPayment.razorpayOrderId,
-            amountInPaise: existingPayment.amountInPaise,
-            currency: existingPayment.currency,
-            keyId: process.env.RAZORPAY_KEY_ID,
-            orderIds: uniqueOrderIds,
-          };
-        }
+  if (
+    existingPayment &&
+    existingPayment.status === 'PENDING' &&
+    existingPayment.razorpayOrderId
+  ) {
+    return {
+      type: 'existing' as const,
+      paymentTransactionId: existingPayment.id,
+      razorpayOrderId: existingPayment.razorpayOrderId,
+      amountInPaise: existingPayment.amountInPaise,
+      currency: existingPayment.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      orderIds: uniqueOrderIds,
+    };
+  }
 
-        throw new ConflictException(
-          'One or more orders are already linked to a payment transaction',
-        );
-      }
+  if (
+    existingPayment &&
+    existingPayment.status === 'FAILED'
+  ) {
+    await tx.order.updateMany({
+      where: {
+        id: {
+          in: uniqueOrderIds,
+        },
+        customerId: userId,
+        paymentTransactionId: existingPayment.id,
+      },
+      data: {
+        paymentTransactionId: null,
+      },
+    });
+  } else {
+    throw new ConflictException(
+      'One or more orders are already linked to a payment transaction',
+    );
+  }
+}
 
       const nonPayableOrder = orders.find(
         (order) =>
