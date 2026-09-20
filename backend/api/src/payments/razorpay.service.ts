@@ -33,6 +33,21 @@ export class RazorpayService {
       receipt,
     });
   }
+  
+  async createRefund(
+  razorpayPaymentId: string,
+  amountInPaise: number,
+  receipt: string,
+) {
+  return this.razorpay.payments.refund(
+    razorpayPaymentId,
+    {
+      amount: amountInPaise,
+      speed: 'normal',
+      receipt,
+    },
+  );
+}
 
   verifyWebhookSignature(
     rawBody: Buffer,

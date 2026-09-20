@@ -14,15 +14,17 @@ describe('PaymentsService', () => {
       findMany: jest.fn(),
       updateMany: jest.fn(),
     },
-    paymentTransaction: {
-      create: jest.fn(),
-      update: jest.fn(),
-    },
+   paymentTransaction: {
+  create: jest.fn(),
+  update: jest.fn(),
+  findFirst: jest.fn(),
+},
   };
 
   const razorpayServiceMock: any = {
-    createOrder: jest.fn(),
-  };
+  createOrder: jest.fn(),
+  createRefund: jest.fn(),
+};
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -102,6 +104,86 @@ describe('PaymentsService', () => {
 
     expect(prismaMock.paymentTransaction.create).not.toHaveBeenCalled();
     expect(razorpayServiceMock.createOrder).not.toHaveBeenCalled();
+  });
+
+    it('should initiate a refund and mark payment as REFUND_PENDING', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const paymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'PAID',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    const refund = {
+      id: 'rfnd_test_123',
+      status: 'pending',
+    };
+
+   prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+  paymentTransaction,
+);
+
+    razorpayServiceMock.createRefund.mockResolvedValue(refund);
+
+    prismaMock.paymentTransaction.update.mockResolvedValue({
+      ...paymentTransaction,
+      status: 'REFUND_PENDING',
+      refundId: refund.id,
+      refundedAmountInPaise: 9000,
+      refundReason: 'Missing item',
+    });
+
+    const result = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 9000,
+        reason: 'Missing item',
+      },
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).toHaveBeenCalledWith(
+      'pay_test_123',
+      9000,
+      paymentTransactionId,
+    );
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: paymentTransactionId,
+      },
+      data: {
+        status: 'REFUND_PENDING',
+        refundId: 'rfnd_test_123',
+        refundedAmountInPaise: 9000,
+        refundReason: 'Missing item',
+      },
+    });
+
+    expect(result).toEqual({
+      message: 'Refund initiated successfully',
+      paymentTransactionId,
+      refundId: 'rfnd_test_123',
+      refundedAmountInPaise: 9000,
+      status: 'REFUND_PENDING',
+      orderIds: ['order-1'],
+    });
   });
 
   it('should create a new payment transaction when the existing payment failed', async () => {
@@ -239,4 +321,6 @@ describe('PaymentsService', () => {
     expect(prismaMock.paymentTransaction.create).not.toHaveBeenCalled();
     expect(razorpayServiceMock.createOrder).not.toHaveBeenCalled();
   });
+
+  
 });

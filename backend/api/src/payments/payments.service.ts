@@ -9,6 +9,7 @@ import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -16,6 +17,88 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly razorpayService: RazorpayService,
   ) {}
+
+
+  async requestRefund(
+  userId: string,
+  paymentTransactionId: string,
+  dto: RefundPaymentDto,
+) {
+  const paymentTransaction =
+    await this.prisma.paymentTransaction.findFirst({
+      where: {
+        id: paymentTransactionId,
+        customerId: userId,
+      },
+      include: {
+        orders: true,
+      },
+    });
+
+  if (!paymentTransaction) {
+    throw new NotFoundException(
+      'Payment transaction not found or does not belong to you',
+    );
+  }
+
+  if (paymentTransaction.status !== 'PAID') {
+    throw new BadRequestException(
+      `Payment transaction cannot be refunded from status ${paymentTransaction.status}`,
+    );
+  }
+
+  if (!paymentTransaction.razorpayPaymentId) {
+    throw new BadRequestException(
+      'Payment transaction is not linked to a Razorpay payment',
+    );
+  }
+
+  if (
+    !Number.isInteger(dto.amountInPaise) ||
+    dto.amountInPaise <= 0
+  ) {
+    throw new BadRequestException(
+      'Refund amount must be greater than zero',
+    );
+  }
+
+  if (dto.amountInPaise > paymentTransaction.amountInPaise) {
+    throw new BadRequestException(
+      'Refund amount cannot exceed the payment amount',
+    );
+  }
+
+  const refund = await this.razorpayService.createRefund(
+    paymentTransaction.razorpayPaymentId,
+    dto.amountInPaise,
+    paymentTransaction.id,
+  );
+
+  const updatedPayment =
+    await this.prisma.paymentTransaction.update({
+      where: {
+        id: paymentTransaction.id,
+      },
+      data: {
+        status: 'REFUND_PENDING',
+        refundId: refund.id,
+        refundedAmountInPaise: dto.amountInPaise,
+        refundReason: dto.reason,
+      },
+    });
+
+  return {
+    message: 'Refund initiated successfully',
+    paymentTransactionId: updatedPayment.id,
+    refundId: updatedPayment.refundId,
+    refundedAmountInPaise:
+      updatedPayment.refundedAmountInPaise,
+    status: updatedPayment.status,
+    orderIds: paymentTransaction.orders.map(
+      (order) => order.id,
+    ),
+  };
+}
 
   async createPayment(userId: string, orderIds: string[]) {
     const uniqueOrderIds = [...new Set(orderIds)];

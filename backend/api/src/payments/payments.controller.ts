@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Headers,
+  Param,
   Post,
   Req,
   UnauthorizedException,
@@ -14,6 +15,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { PaymentsService } from './payments.service';
 import { RazorpayService } from './razorpay.service';
 
@@ -47,6 +49,21 @@ export class PaymentsController {
       dto,
     );
   }
+
+  @Post(':paymentTransactionId/refund')
+@UseGuards(JwtAuthGuard)
+async refundPayment(
+  @CurrentUser() user: CurrentUserPayload,
+  @Param('paymentTransactionId') paymentTransactionId: string,
+  @Body() dto: RefundPaymentDto,
+) {
+  return this.paymentsService.requestRefund(
+    user.userId,
+    paymentTransactionId,
+    dto,
+  );
+}
+
 
   @Post('webhook')
   async handleWebhook(
