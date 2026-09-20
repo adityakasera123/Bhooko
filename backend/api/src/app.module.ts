@@ -8,6 +8,7 @@ import { AddressesModule } from './addresses/addresses.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
 import { FoodModule } from './food/food.module';
 import { CartModule } from './cart/cart.module';
+import { CheckoutModule } from './checkout/checkout.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -60,6 +61,7 @@ import { PaymentsModule } from './payments/payments.module';
     RestaurantsModule,
     FoodModule,
     CartModule,
+    CheckoutModule,
     OrdersModule,
     PaymentsModule,
   ],
