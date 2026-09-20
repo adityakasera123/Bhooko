@@ -8,10 +8,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { PricingService } from '../pricing/pricing.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+  private readonly prisma: PrismaService,
+  private readonly pricingService: PricingService,
+) {}
 
 async createOrder(userId: string, dto: CreateOrderDto) {
   return this.prisma.$transaction(async (tx) => {
@@ -134,6 +138,10 @@ async createOrder(userId: string, dto: CreateOrderDto) {
     for (const group of restaurantGroups.values()) {
       const itemSubtotalInPaise = group.itemSubtotalInPaise;
 
+      const pricing = this.pricingService.calculate({
+  itemSubtotalInPaise,
+});
+
       const order = await tx.order.create({
         data: {
           customerId: userId,
@@ -155,12 +163,12 @@ async createOrder(userId: string, dto: CreateOrderDto) {
           deliveryLongitude: address.longitude,
           deliveryInstructions: address.deliveryInstructions,
 
-          itemSubtotalInPaise,
-          deliveryFeeInPaise: 0,
-          platformFeeInPaise: 0,
-          taxInPaise: 0,
-          discountInPaise: 0,
-          totalInPaise: itemSubtotalInPaise,
+          itemSubtotalInPaise: pricing.itemSubtotalInPaise,
+deliveryFeeInPaise: pricing.deliveryFeeInPaise,
+platformFeeInPaise: pricing.platformFeeInPaise,
+taxInPaise: pricing.taxInPaise,
+discountInPaise: pricing.discountInPaise,
+totalInPaise: pricing.totalInPaise,
 
           items: {
             create: group.items.map((item) => ({
