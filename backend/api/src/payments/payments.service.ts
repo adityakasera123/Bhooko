@@ -19,86 +19,229 @@ export class PaymentsService {
   ) {}
 
 
+
   async requestRefund(
-  userId: string,
-  paymentTransactionId: string,
-  dto: RefundPaymentDto,
-) {
-  const paymentTransaction =
-    await this.prisma.paymentTransaction.findFirst({
-      where: {
-        id: paymentTransactionId,
-        customerId: userId,
-      },
-      include: {
-        orders: true,
-      },
-    });
-
-  if (!paymentTransaction) {
-    throw new NotFoundException(
-      'Payment transaction not found or does not belong to you',
-    );
-  }
-
-  if (paymentTransaction.status !== 'PAID') {
-    throw new BadRequestException(
-      `Payment transaction cannot be refunded from status ${paymentTransaction.status}`,
-    );
-  }
-
-  if (!paymentTransaction.razorpayPaymentId) {
-    throw new BadRequestException(
-      'Payment transaction is not linked to a Razorpay payment',
-    );
-  }
-
-  if (
-    !Number.isInteger(dto.amountInPaise) ||
-    dto.amountInPaise <= 0
+    userId: string,
+    paymentTransactionId: string,
+    dto: RefundPaymentDto,
   ) {
-    throw new BadRequestException(
-      'Refund amount must be greater than zero',
+    const paymentTransaction =
+      await this.prisma.paymentTransaction.findFirst({
+        where: {
+          id: paymentTransactionId,
+          customerId: userId,
+        },
+        include: {
+          orders: true,
+        },
+      });
+
+    if (!paymentTransaction) {
+      throw new NotFoundException(
+        'Payment transaction not found or does not belong to you',
+      );
+    }
+
+    // A refund already being processed must not create another refund.
+    if (paymentTransaction.status === 'REFUND_PENDING') {
+      return {
+        message: 'Refund is already pending',
+        paymentTransactionId: paymentTransaction.id,
+        refundId: paymentTransaction.refundId,
+        refundedAmountInPaise:
+          paymentTransaction.refundedAmountInPaise,
+        status: paymentTransaction.status,
+        orderIds: paymentTransaction.orders.map(
+          (order) => order.id,
+        ),
+      };
+    }
+
+    // A fully refunded payment cannot be refunded again.
+    if (paymentTransaction.status === 'REFUNDED') {
+      return {
+        message: 'Refund has already been completed',
+        paymentTransactionId: paymentTransaction.id,
+        refundId: paymentTransaction.refundId,
+        refundedAmountInPaise:
+          paymentTransaction.refundedAmountInPaise,
+        status: paymentTransaction.status,
+        orderIds: paymentTransaction.orders.map(
+          (order) => order.id,
+        ),
+      };
+    }
+
+    if (paymentTransaction.status !== 'PAID') {
+      throw new BadRequestException(
+        `Payment transaction cannot be refunded from status ${paymentTransaction.status}`,
+      );
+    }
+
+    if (!paymentTransaction.razorpayPaymentId) {
+      throw new BadRequestException(
+        'Payment transaction is not linked to a Razorpay payment',
+      );
+    }
+
+    if (
+      !Number.isInteger(dto.amountInPaise) ||
+      dto.amountInPaise <= 0
+    ) {
+      throw new BadRequestException(
+        'Refund amount must be greater than zero',
+      );
+    }
+
+    // Calculate the amount already successfully refunded.
+    const refundAggregate =
+      await this.prisma.refund.aggregate({
+        where: {
+          paymentTransactionId: paymentTransaction.id,
+          status: 'PROCESSED',
+        },
+        _sum: {
+          amountInPaise: true,
+        },
+      });
+
+    const refundedSoFarInPaise =
+      refundAggregate._sum.amountInPaise ?? 0;
+
+    const remainingRefundableInPaise =
+      paymentTransaction.amountInPaise -
+      refundedSoFarInPaise;
+
+    if (dto.amountInPaise > remainingRefundableInPaise) {
+      throw new BadRequestException(
+        `Refund amount cannot exceed the remaining refundable amount of ${remainingRefundableInPaise} paise`,
+      );
+    }
+
+    const refund = await this.razorpayService.createRefund(
+      paymentTransaction.razorpayPaymentId,
+      dto.amountInPaise,
+      paymentTransaction.id,
     );
+
+    if (refund.amount !== dto.amountInPaise) {
+      throw new BadRequestException(
+        'Razorpay refund amount does not match the requested refund amount',
+      );
+    }
+
+    if (
+      refund.payment_id &&
+      refund.payment_id !== paymentTransaction.razorpayPaymentId
+    ) {
+      throw new BadRequestException(
+        'Razorpay refund does not belong to the payment transaction',
+      );
+    }
+
+    const refundStatus =
+      typeof refund.status === 'string'
+        ? refund.status
+        : 'pending';
+
+    let internalRefundStatus:
+      | 'PENDING'
+      | 'PROCESSED'
+      | 'FAILED';
+
+    if (refundStatus === 'processed') {
+      internalRefundStatus = 'PROCESSED';
+    } else if (refundStatus === 'failed') {
+      internalRefundStatus = 'FAILED';
+    } else {
+      internalRefundStatus = 'PENDING';
+    }
+
+    const refundRecord =
+      await this.prisma.$transaction(async (tx) => {
+        const createdRefund = await tx.refund.create({
+          data: {
+            paymentTransactionId: paymentTransaction.id,
+            razorpayRefundId: refund.id,
+            amountInPaise: dto.amountInPaise,
+            status: internalRefundStatus,
+            reason: dto.reason,
+          },
+        });
+
+        let nextPaymentStatus:
+          | 'PAID'
+          | 'REFUND_PENDING'
+          | 'REFUNDED';
+
+        let cumulativeRefundedInPaise =
+          refundedSoFarInPaise;
+
+        if (internalRefundStatus === 'PROCESSED') {
+          cumulativeRefundedInPaise += dto.amountInPaise;
+
+          nextPaymentStatus =
+            cumulativeRefundedInPaise ===
+            paymentTransaction.amountInPaise
+              ? 'REFUNDED'
+              : 'PAID';
+        } else if (internalRefundStatus === 'PENDING') {
+          nextPaymentStatus = 'REFUND_PENDING';
+        } else {
+          nextPaymentStatus = 'PAID';
+        }
+
+        await tx.paymentTransaction.update({
+          where: {
+            id: paymentTransaction.id,
+          },
+          data: {
+            status: nextPaymentStatus,
+            refundId: createdRefund.razorpayRefundId,
+            refundedAmountInPaise:
+              cumulativeRefundedInPaise,
+            refundReason: dto.reason,
+          },
+        });
+
+        return createdRefund;
+      });
+
+    const cumulativeRefundedInPaise =
+      internalRefundStatus === 'PROCESSED'
+        ? refundedSoFarInPaise + dto.amountInPaise
+        : refundedSoFarInPaise;
+
+    const paymentStatus =
+      internalRefundStatus === 'PROCESSED'
+        ? cumulativeRefundedInPaise ===
+          paymentTransaction.amountInPaise
+          ? 'REFUNDED'
+          : 'PAID'
+        : internalRefundStatus === 'PENDING'
+          ? 'REFUND_PENDING'
+          : 'PAID';
+
+    return {
+      message:
+        internalRefundStatus === 'PROCESSED'
+          ? paymentStatus === 'REFUNDED'
+            ? 'Refund completed successfully'
+            : 'Partial refund completed successfully'
+          : internalRefundStatus === 'FAILED'
+            ? 'Refund failed'
+            : 'Refund initiated successfully',
+      paymentTransactionId: paymentTransaction.id,
+      refundId: refundRecord.razorpayRefundId,
+      refundedAmountInPaise: cumulativeRefundedInPaise,
+      status: paymentStatus,
+      orderIds: paymentTransaction.orders.map(
+        (order) => order.id,
+      ),
+    };
   }
 
-  if (dto.amountInPaise > paymentTransaction.amountInPaise) {
-    throw new BadRequestException(
-      'Refund amount cannot exceed the payment amount',
-    );
-  }
 
-  const refund = await this.razorpayService.createRefund(
-    paymentTransaction.razorpayPaymentId,
-    dto.amountInPaise,
-    paymentTransaction.id,
-  );
-
-  const updatedPayment =
-    await this.prisma.paymentTransaction.update({
-      where: {
-        id: paymentTransaction.id,
-      },
-      data: {
-        status: 'REFUND_PENDING',
-        refundId: refund.id,
-        refundedAmountInPaise: dto.amountInPaise,
-        refundReason: dto.reason,
-      },
-    });
-
-  return {
-    message: 'Refund initiated successfully',
-    paymentTransactionId: updatedPayment.id,
-    refundId: updatedPayment.refundId,
-    refundedAmountInPaise:
-      updatedPayment.refundedAmountInPaise,
-    status: updatedPayment.status,
-    orderIds: paymentTransaction.orders.map(
-      (order) => order.id,
-    ),
-  };
-}
 
   async createPayment(userId: string, orderIds: string[]) {
     const uniqueOrderIds = [...new Set(orderIds)];

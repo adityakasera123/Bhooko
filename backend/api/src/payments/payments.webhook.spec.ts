@@ -1,3 +1,4 @@
+
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -8,7 +9,7 @@ import { PaymentsService } from './payments.service';
 describe('PaymentsService Webhook', () => {
   let service: PaymentsService;
 
-  const prismaMock = {
+  const prismaMock: any = {
     $transaction: jest.fn(),
     paymentTransaction: {
       findUnique: jest.fn(),
@@ -19,8 +20,9 @@ describe('PaymentsService Webhook', () => {
     },
   };
 
-  const razorpayServiceMock = {
+  const razorpayServiceMock: any = {
     createOrder: jest.fn(),
+    createRefund: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -60,9 +62,7 @@ describe('PaymentsService Webhook', () => {
     );
 
     prismaMock.$transaction.mockImplementation(
-      async (
-        callback: (tx: typeof prismaMock) => Promise<unknown>,
-      ) => callback(prismaMock),
+      async (callback: any) => callback(prismaMock),
     );
 
     prismaMock.paymentTransaction.update.mockResolvedValue({

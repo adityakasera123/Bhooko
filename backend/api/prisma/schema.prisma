@@ -44,6 +44,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -275,7 +281,24 @@ model PaymentTransaction {
 
   customer User    @relation(fields: [customerId], references: [id])
   orders   Order[]
+  refunds  Refund[]
 
   @@index([customerId])
+  @@index([status])
+}
+
+model Refund {
+  id                   String       @id @default(uuid())
+  paymentTransactionId String
+  razorpayRefundId     String       @unique
+  amountInPaise        Int
+  status               RefundStatus
+  reason               String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([paymentTransactionId])
   @@index([status])
 }

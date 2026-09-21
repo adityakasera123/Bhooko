@@ -14,34 +14,49 @@ describe('PaymentsService', () => {
       findMany: jest.fn(),
       updateMany: jest.fn(),
     },
-   paymentTransaction: {
-  create: jest.fn(),
-  update: jest.fn(),
-  findFirst: jest.fn(),
-},
+    paymentTransaction: {
+      create: jest.fn(),
+      update: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    refund: {
+      aggregate: jest.fn(),
+      create: jest.fn(),
+    },
   };
 
   const razorpayServiceMock: any = {
-  createOrder: jest.fn(),
-  createRefund: jest.fn(),
-};
+    createOrder: jest.fn(),
+    createRefund: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PaymentsService,
-        {
-          provide: PrismaService,
-          useValue: prismaMock,
-        },
-        {
-          provide: RazorpayService,
-          useValue: razorpayServiceMock,
-        },
-      ],
-    }).compile();
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(prismaMock),
+    );
+
+    prismaMock.refund.aggregate.mockResolvedValue({
+      _sum: {
+        amountInPaise: 0,
+      },
+    });
+
+    const module: TestingModule =
+      await Test.createTestingModule({
+        providers: [
+          PaymentsService,
+          {
+            provide: PrismaService,
+            useValue: prismaMock,
+          },
+          {
+            provide: RazorpayService,
+            useValue: razorpayServiceMock,
+          },
+        ],
+      }).compile();
 
     service = module.get<PaymentsService>(PaymentsService);
   });
@@ -63,10 +78,6 @@ describe('PaymentsService', () => {
       currency: 'INR',
       razorpayOrderId: 'order_test_123',
     };
-
-    prismaMock.$transaction.mockImplementation(
-      async (callback: any) => callback(prismaMock),
-    );
 
     prismaMock.order.findMany.mockResolvedValue([
       {
@@ -102,11 +113,16 @@ describe('PaymentsService', () => {
       orderIds: [orderId1, orderId2],
     });
 
-    expect(prismaMock.paymentTransaction.create).not.toHaveBeenCalled();
-    expect(razorpayServiceMock.createOrder).not.toHaveBeenCalled();
+    expect(
+      prismaMock.paymentTransaction.create,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      razorpayServiceMock.createOrder,
+    ).not.toHaveBeenCalled();
   });
 
-    it('should initiate a refund and mark payment as REFUND_PENDING', async () => {
+  it('should initiate a refund and mark payment as REFUND_PENDING', async () => {
     const userId = 'customer-1';
     const paymentTransactionId = 'payment-1';
 
@@ -129,11 +145,22 @@ describe('PaymentsService', () => {
     const refund = {
       id: 'rfnd_test_123',
       status: 'pending',
+      amount: 9000,
+      payment_id: 'pay_test_123',
     };
 
-   prismaMock.paymentTransaction.findFirst.mockResolvedValue(
-  paymentTransaction,
-);
+    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    prismaMock.refund.create.mockResolvedValue({
+      id: 'refund-record-1',
+      paymentTransactionId,
+      razorpayRefundId: refund.id,
+      amountInPaise: 9000,
+      status: 'PENDING',
+      reason: 'Missing item',
+    });
 
     razorpayServiceMock.createRefund.mockResolvedValue(refund);
 
@@ -141,7 +168,7 @@ describe('PaymentsService', () => {
       ...paymentTransaction,
       status: 'REFUND_PENDING',
       refundId: refund.id,
-      refundedAmountInPaise: 9000,
+      refundedAmountInPaise: 0,
       refundReason: 'Missing item',
     });
 
@@ -163,6 +190,18 @@ describe('PaymentsService', () => {
     );
 
     expect(
+      prismaMock.refund.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        paymentTransactionId,
+        razorpayRefundId: 'rfnd_test_123',
+        amountInPaise: 9000,
+        status: 'PENDING',
+        reason: 'Missing item',
+      },
+    });
+
+    expect(
       prismaMock.paymentTransaction.update,
     ).toHaveBeenCalledWith({
       where: {
@@ -171,7 +210,7 @@ describe('PaymentsService', () => {
       data: {
         status: 'REFUND_PENDING',
         refundId: 'rfnd_test_123',
-        refundedAmountInPaise: 9000,
+        refundedAmountInPaise: 0,
         refundReason: 'Missing item',
       },
     });
@@ -180,8 +219,559 @@ describe('PaymentsService', () => {
       message: 'Refund initiated successfully',
       paymentTransactionId,
       refundId: 'rfnd_test_123',
+      refundedAmountInPaise: 0,
+      status: 'REFUND_PENDING',
+      orderIds: ['order-1'],
+    });
+  });
+
+  it('should mark payment as REFUNDED when Razorpay refund is processed', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const paymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'PAID',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    const refund = {
+      id: 'rfnd_test_456',
+      status: 'processed',
+      amount: 18000,
+      payment_id: 'pay_test_123',
+    };
+
+    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    prismaMock.refund.create.mockResolvedValue({
+      id: 'refund-record-2',
+      paymentTransactionId,
+      razorpayRefundId: refund.id,
+      amountInPaise: 18000,
+      status: 'PROCESSED',
+      reason: 'Full refund',
+    });
+
+    razorpayServiceMock.createRefund.mockResolvedValue(refund);
+
+    prismaMock.paymentTransaction.update.mockResolvedValue({
+      ...paymentTransaction,
+      status: 'REFUNDED',
+      refundId: refund.id,
+      refundedAmountInPaise: 18000,
+      refundReason: 'Full refund',
+    });
+
+    const result = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 18000,
+        reason: 'Full refund',
+      },
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).toHaveBeenCalledWith(
+      'pay_test_123',
+      18000,
+      paymentTransactionId,
+    );
+
+    expect(
+      prismaMock.refund.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        paymentTransactionId,
+        razorpayRefundId: 'rfnd_test_456',
+        amountInPaise: 18000,
+        status: 'PROCESSED',
+        reason: 'Full refund',
+      },
+    });
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: paymentTransactionId,
+      },
+      data: {
+        status: 'REFUNDED',
+        refundId: 'rfnd_test_456',
+        refundedAmountInPaise: 18000,
+        refundReason: 'Full refund',
+      },
+    });
+
+    expect(result).toEqual({
+      message: 'Refund completed successfully',
+      paymentTransactionId,
+      refundId: 'rfnd_test_456',
+      refundedAmountInPaise: 18000,
+      status: 'REFUNDED',
+      orderIds: ['order-1'],
+    });
+  });
+
+  it('should support cumulative partial refunds and mark payment as REFUNDED after the full amount is refunded', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const firstPaymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'PAID',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      refundId: null,
+      refundedAmountInPaise: 0,
+      refundReason: null,
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    const secondPaymentTransaction = {
+      ...firstPaymentTransaction,
+      status: 'PAID',
+      refundId: 'rfnd_test_001',
+      refundedAmountInPaise: 9000,
+      refundReason: 'Missing item',
+    };
+
+    prismaMock.paymentTransaction.findFirst
+      .mockResolvedValueOnce(firstPaymentTransaction)
+      .mockResolvedValueOnce(secondPaymentTransaction);
+
+    prismaMock.refund.aggregate
+      .mockResolvedValueOnce({
+        _sum: {
+          amountInPaise: 0,
+        },
+      })
+      .mockResolvedValueOnce({
+        _sum: {
+          amountInPaise: 9000,
+        },
+      });
+
+    const firstRefund = {
+      id: 'rfnd_test_001',
+      status: 'processed',
+      amount: 9000,
+      payment_id: 'pay_test_123',
+    };
+
+    const secondRefund = {
+      id: 'rfnd_test_002',
+      status: 'processed',
+      amount: 9000,
+      payment_id: 'pay_test_123',
+    };
+
+    prismaMock.refund.create
+      .mockResolvedValueOnce({
+        id: 'refund-record-1',
+        paymentTransactionId,
+        razorpayRefundId: firstRefund.id,
+        amountInPaise: 9000,
+        status: 'PROCESSED',
+        reason: 'Missing item',
+      })
+      .mockResolvedValueOnce({
+        id: 'refund-record-2',
+        paymentTransactionId,
+        razorpayRefundId: secondRefund.id,
+        amountInPaise: 9000,
+        status: 'PROCESSED',
+        reason: 'Order cancelled',
+      });
+
+    razorpayServiceMock.createRefund
+      .mockResolvedValueOnce(firstRefund)
+      .mockResolvedValueOnce(secondRefund);
+
+    prismaMock.paymentTransaction.update
+      .mockResolvedValueOnce({
+        ...firstPaymentTransaction,
+        status: 'PAID',
+        refundId: firstRefund.id,
+        refundedAmountInPaise: 9000,
+        refundReason: 'Missing item',
+      })
+      .mockResolvedValueOnce({
+        ...secondPaymentTransaction,
+        status: 'REFUNDED',
+        refundId: secondRefund.id,
+        refundedAmountInPaise: 18000,
+        refundReason: 'Order cancelled',
+      });
+
+    const firstResult = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 9000,
+        reason: 'Missing item',
+      },
+    );
+
+    const secondResult = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 9000,
+        reason: 'Order cancelled',
+      },
+    );
+
+    expect(firstResult).toEqual({
+      message: 'Partial refund completed successfully',
+      paymentTransactionId,
+      refundId: 'rfnd_test_001',
+      refundedAmountInPaise: 9000,
+      status: 'PAID',
+      orderIds: ['order-1'],
+    });
+
+    expect(secondResult).toEqual({
+      message: 'Refund completed successfully',
+      paymentTransactionId,
+      refundId: 'rfnd_test_002',
+      refundedAmountInPaise: 18000,
+      status: 'REFUNDED',
+      orderIds: ['order-1'],
+    });
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).toHaveBeenNthCalledWith(
+      1,
+      'pay_test_123',
+      9000,
+      paymentTransactionId,
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).toHaveBeenNthCalledWith(
+      2,
+      'pay_test_123',
+      9000,
+      paymentTransactionId,
+    );
+
+    expect(prismaMock.refund.create).toHaveBeenCalledTimes(2);
+
+    expect(
+      prismaMock.refund.aggregate,
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it('should reject a refund amount greater than the remaining refundable amount', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const paymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'PAID',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      refundId: 'rfnd_test_previous',
+      refundedAmountInPaise: 9000,
+      refundReason: 'Missing item',
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    prismaMock.refund.aggregate.mockResolvedValue({
+      _sum: {
+        amountInPaise: 9000,
+      },
+    });
+
+    await expect(
+      service.requestRefund(
+        userId,
+        paymentTransactionId,
+        {
+          amountInPaise: 10000,
+          reason: 'Wrong item',
+        },
+      ),
+    ).rejects.toThrow(
+      'Refund amount cannot exceed the remaining refundable amount of 9000 paise',
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.refund.create,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).not.toHaveBeenCalled();
+  });
+
+
+
+  it('should handle a failed Razorpay refund without changing payment state', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const paymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'PAID',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    const refund = {
+      id: 'rfnd_test_failed',
+      status: 'failed',
+      amount: 9000,
+      payment_id: 'pay_test_123',
+    };
+
+    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    prismaMock.refund.create.mockResolvedValue({
+      id: 'refund-record-3',
+      paymentTransactionId,
+      razorpayRefundId: refund.id,
+      amountInPaise: 9000,
+      status: 'FAILED',
+      reason: 'Wrong item',
+    });
+
+    razorpayServiceMock.createRefund.mockResolvedValue(refund);
+
+    prismaMock.paymentTransaction.update.mockResolvedValue({
+      ...paymentTransaction,
+      status: 'PAID',
+      refundId: refund.id,
+      refundedAmountInPaise: 0,
+      refundReason: 'Wrong item',
+    });
+
+    const result = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 9000,
+        reason: 'Wrong item',
+      },
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).toHaveBeenCalledWith(
+      'pay_test_123',
+      9000,
+      paymentTransactionId,
+    );
+
+    expect(
+      prismaMock.refund.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        paymentTransactionId,
+        razorpayRefundId: 'rfnd_test_failed',
+        amountInPaise: 9000,
+        status: 'FAILED',
+        reason: 'Wrong item',
+      },
+    });
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: paymentTransactionId,
+      },
+      data: {
+        status: 'PAID',
+        refundId: 'rfnd_test_failed',
+        refundedAmountInPaise: 0,
+        refundReason: 'Wrong item',
+      },
+    });
+
+    expect(result).toEqual({
+      message: 'Refund failed',
+      paymentTransactionId,
+      refundId: 'rfnd_test_failed',
+      refundedAmountInPaise: 0,
+      status: 'PAID',
+      orderIds: ['order-1'],
+    });
+  });
+
+  it('should not create another refund when a refund is already pending', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const paymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'REFUND_PENDING',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      refundId: 'rfnd_test_pending',
+      refundedAmountInPaise: 9000,
+      refundReason: 'Missing item',
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    const result = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 9000,
+        reason: 'Missing item',
+      },
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.refund.create,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.refund.aggregate,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).not.toHaveBeenCalled();
+
+    expect(result).toEqual({
+      message: 'Refund is already pending',
+      paymentTransactionId,
+      refundId: 'rfnd_test_pending',
       refundedAmountInPaise: 9000,
       status: 'REFUND_PENDING',
+      orderIds: ['order-1'],
+    });
+  });
+
+  it('should not create another refund when the payment is already refunded', async () => {
+    const userId = 'customer-1';
+    const paymentTransactionId = 'payment-1';
+
+    const paymentTransaction = {
+      id: paymentTransactionId,
+      customerId: userId,
+      status: 'REFUNDED',
+      amountInPaise: 18000,
+      currency: 'INR',
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: 'pay_test_123',
+      refundId: 'rfnd_test_completed',
+      refundedAmountInPaise: 18000,
+      refundReason: 'Full refund',
+      orders: [
+        {
+          id: 'order-1',
+          customerId: userId,
+        },
+      ],
+    };
+
+    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    const result = await service.requestRefund(
+      userId,
+      paymentTransactionId,
+      {
+        amountInPaise: 18000,
+        reason: 'Full refund',
+      },
+    );
+
+    expect(
+      razorpayServiceMock.createRefund,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.refund.create,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.refund.aggregate,
+    ).not.toHaveBeenCalled();
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).not.toHaveBeenCalled();
+
+    expect(result).toEqual({
+      message: 'Refund has already been completed',
+      paymentTransactionId,
+      refundId: 'rfnd_test_completed',
+      refundedAmountInPaise: 18000,
+      status: 'REFUNDED',
       orderIds: ['order-1'],
     });
   });
@@ -206,10 +796,6 @@ describe('PaymentsService', () => {
       amountInPaise: 18000,
       currency: 'INR',
     };
-
-    prismaMock.$transaction.mockImplementation(
-      async (callback: any) => callback(prismaMock),
-    );
 
     prismaMock.order.findMany.mockResolvedValue([
       {
@@ -258,9 +844,13 @@ describe('PaymentsService', () => {
       },
     });
 
-    expect(prismaMock.paymentTransaction.create).toHaveBeenCalled();
+    expect(
+      prismaMock.paymentTransaction.create,
+    ).toHaveBeenCalled();
 
-    expect(razorpayServiceMock.createOrder).toHaveBeenCalledWith(
+    expect(
+      razorpayServiceMock.createOrder,
+    ).toHaveBeenCalledWith(
       18000,
       'payment-2',
     );
@@ -288,10 +878,6 @@ describe('PaymentsService', () => {
       razorpayOrderId: 'order_test_123',
     };
 
-    prismaMock.$transaction.mockImplementation(
-      async (callback: any) => callback(prismaMock),
-    );
-
     prismaMock.order.findMany.mockResolvedValue([
       {
         id: orderId,
@@ -318,9 +904,12 @@ describe('PaymentsService', () => {
       orderIds: [orderId],
     });
 
-    expect(prismaMock.paymentTransaction.create).not.toHaveBeenCalled();
-    expect(razorpayServiceMock.createOrder).not.toHaveBeenCalled();
-  });
+    expect(
+      prismaMock.paymentTransaction.create,
+    ).not.toHaveBeenCalled();
 
-  
+    expect(
+      razorpayServiceMock.createOrder,
+    ).not.toHaveBeenCalled();
+  });
 });
