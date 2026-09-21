@@ -44,6 +44,51 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum ReconciliationMode {
+  SCHEDULED
+  TARGETED
+}
+
+enum ReconciliationRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ReconciliationEntityType {
+  PAYMENT
+  REFUND
+}
+
+enum ReconciliationResultStatus {
+  MATCHED
+  MISMATCH
+  AUTO_RESOLVED
+  REVIEW_REQUIRED
+  ERROR
+}
+
+enum ReconciliationMismatchType {
+  NONE
+  STATUS_MISMATCH
+  AMOUNT_MISMATCH
+  CURRENCY_MISMATCH
+  IDENTITY_MISMATCH
+  MISSING_EXTERNAL_REFERENCE
+  EXTERNAL_RECORD_MISSING
+  LOCAL_RECORD_MISSING
+  REFUND_STATUS_MISMATCH
+  REFUND_AMOUNT_MISMATCH
+  DUPLICATE_CONFLICT
+  UNKNOWN
+}
+
+enum ReconciliationAction {
+  NONE
+  AUTO_RESOLVE
+  FLAG_REVIEW
+}
+
 enum RefundStatus {
   PENDING
   PROCESSED
@@ -60,11 +105,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  restaurants        Restaurant[]
-  customerAddresses  CustomerAddress[]
-  refreshTokens      RefreshToken[]
-  cart               Cart?
-  orders             Order[]
+  restaurants         Restaurant[]
+  customerAddresses   CustomerAddress[]
+  refreshTokens       RefreshToken[]
+  cart                Cart?
+  orders              Order[]
   paymentTransactions PaymentTransaction[]
 }
 
@@ -96,10 +141,10 @@ model Restaurant {
   state        String
   pincode      String
   status       RestaurantStatus
-  rating       Float              @default(0)
-  reviewCount  Int                @default(0)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  rating       Float            @default(0)
+  reviewCount  Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   owner      User           @relation(fields: [ownerId], references: [id])
   categories FoodCategory[]
@@ -140,7 +185,7 @@ model FoodCategory {
   displayOrder Int      @default(0)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id])
   foodItems  FoodItem[]
@@ -159,7 +204,7 @@ model FoodItem {
   isAvailable  Boolean  @default(true)
   foodType     FoodType
   createdAt    DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
 
   restaurant Restaurant   @relation(fields: [restaurantId], references: [id])
   category   FoodCategory @relation(fields: [categoryId], references: [id])
@@ -222,9 +267,9 @@ model Order {
   itemSubtotalInPaise Int
   deliveryFeeInPaise  Int @default(0)
   platformFeeInPaise  Int @default(0)
-  taxInPaise           Int @default(0)
-  discountInPaise      Int @default(0)
-  totalInPaise         Int
+  taxInPaise          Int @default(0)
+  discountInPaise     Int @default(0)
+  totalInPaise        Int
 
   // Combined checkout/payment transaction
   paymentTransactionId String?
@@ -265,23 +310,24 @@ model OrderItem {
 }
 
 model PaymentTransaction {
-  id                String        @id @default(uuid())
-  customerId        String
-  status            PaymentStatus @default(CREATED)
-  amountInPaise     Int
-  currency          String        @default("INR")
-  razorpayOrderId   String?       @unique
-  razorpayPaymentId String?       @unique
-  razorpaySignature String?
-  refundId           String?
+  id                    String        @id @default(uuid())
+  customerId            String
+  status                PaymentStatus @default(CREATED)
+  amountInPaise         Int
+  currency              String        @default("INR")
+  razorpayOrderId       String?       @unique
+  razorpayPaymentId     String?       @unique
+  razorpaySignature     String?
+  refundId              String?
   refundedAmountInPaise Int?
-  refundReason       String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  refundReason          String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
-  customer User    @relation(fields: [customerId], references: [id])
-  orders   Order[]
-  refunds  Refund[]
+  customer              User                   @relation(fields: [customerId], references: [id])
+  orders                Order[]
+  refunds               Refund[]
+  reconciliationRecords ReconciliationRecord[]
 
   @@index([customerId])
   @@index([status])
@@ -291,16 +337,88 @@ model Refund {
   id                   String       @id @default(uuid())
   paymentTransactionId String
   idempotencyKey       String
-  razorpayRefundId     String?       @unique
+  razorpayRefundId     String?      @unique
   amountInPaise        Int
   status               RefundStatus
   reason               String?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
-  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  paymentTransaction    PaymentTransaction     @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  reconciliationRecords ReconciliationRecord[]
 
   @@unique([paymentTransactionId, idempotencyKey])
   @@index([paymentTransactionId])
   @@index([status])
+}
+
+model ReconciliationRun {
+  id                  String                  @id @default(uuid())
+  mode                ReconciliationMode
+  startedAt           DateTime                @default(now())
+  completedAt         DateTime?
+  status              ReconciliationRunStatus
+  windowStart         DateTime?
+  windowEnd           DateTime?
+  totalChecked        Int                     @default(0)
+  matchedCount        Int                     @default(0)
+  mismatchCount       Int                     @default(0)
+  autoResolvedCount   Int                     @default(0)
+  reviewRequiredCount Int                     @default(0)
+  errorCount          Int                     @default(0)
+
+  records ReconciliationRecord[]
+
+  @@index([status])
+  @@index([mode])
+  @@index([startedAt])
+  @@index([windowStart, windowEnd])
+}
+
+model ReconciliationRecord {
+  id                  String @id @default(uuid())
+  reconciliationRunId String
+
+  paymentTransactionId String?
+  refundId             String?
+
+  entityType       ReconciliationEntityType
+  entityExternalId String
+
+  mismatchType  ReconciliationMismatchType
+  localState    String?
+  externalState String?
+
+  localAmountInPaise    Int?
+  externalAmountInPaise Int?
+
+  localCurrency    String?
+  externalCurrency String?
+
+  action           ReconciliationAction
+  resolutionStatus ReconciliationResultStatus
+
+  oldLocalState String?
+  newLocalState String?
+
+  resolutionRule   String?
+  resolutionReason String?
+
+  errorCode    String?
+  errorMessage String?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  reconciliationRun  ReconciliationRun   @relation(fields: [reconciliationRunId], references: [id], onDelete: Cascade)
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
+  refund             Refund?             @relation(fields: [refundId], references: [id])
+
+  @@unique([reconciliationRunId, entityType, entityExternalId])
+  @@index([paymentTransactionId])
+  @@index([refundId])
+  @@index([entityType, entityExternalId])
+  @@index([resolutionStatus])
+  @@index([mismatchType])
+  @@index([createdAt])
 }
