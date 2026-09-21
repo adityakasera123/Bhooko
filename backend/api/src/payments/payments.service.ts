@@ -546,9 +546,13 @@ export class PaymentsService {
     };
   }
 
-  async handleWebhook(body: Record<string, unknown>) {
+   async handleWebhook(body: Record<string, unknown>) {
     const event =
       typeof body.event === 'string' ? body.event : '';
+
+    if (event.startsWith('refund.')) {
+      return this.handleRefundWebhook(body);
+    }
 
     const payload =
       body.payload &&
@@ -716,6 +720,266 @@ export class PaymentsService {
       received: true,
       processed: false,
       reason: `Event ${event || 'unknown'} is not handled`,
+    };
+  }
+
+  private async handleRefundWebhook(
+    body: Record<string, unknown>,
+  ) {
+    const event =
+      typeof body.event === 'string' ? body.event : '';
+
+    const payload =
+      body.payload &&
+      typeof body.payload === 'object'
+        ? (body.payload as Record<string, unknown>)
+        : {};
+
+    const refundPayload =
+      payload.refund &&
+      typeof payload.refund === 'object'
+        ? (payload.refund as Record<string, unknown>)
+        : {};
+
+    const refundEntity =
+      refundPayload.entity &&
+      typeof refundPayload.entity === 'object'
+        ? (refundPayload.entity as Record<string, unknown>)
+        : {};
+
+    const paymentPayload =
+      payload.payment &&
+      typeof payload.payment === 'object'
+        ? (payload.payment as Record<string, unknown>)
+        : {};
+
+    const paymentEntity =
+      paymentPayload.entity &&
+      typeof paymentPayload.entity === 'object'
+        ? (paymentPayload.entity as Record<string, unknown>)
+        : {};
+
+    const razorpayRefundId =
+      typeof refundEntity.id === 'string'
+        ? refundEntity.id
+        : null;
+
+    const razorpayPaymentId =
+      typeof refundEntity.payment_id === 'string'
+        ? refundEntity.payment_id
+        : typeof paymentEntity.id === 'string'
+          ? paymentEntity.id
+          : null;
+
+    const amount =
+      typeof refundEntity.amount === 'number'
+        ? refundEntity.amount
+        : null;
+
+    const razorpayRefundStatus =
+      typeof refundEntity.status === 'string'
+        ? refundEntity.status
+        : null;
+
+    if (!razorpayRefundId) {
+      return {
+        received: true,
+        processed: false,
+        event,
+        reason: 'Razorpay refund ID not found in webhook payload',
+      };
+    }
+
+    if (!razorpayPaymentId) {
+      return {
+        received: true,
+        processed: false,
+        event,
+        reason: 'Razorpay payment ID not found in refund webhook payload',
+      };
+    }
+
+    if (amount === null || !Number.isInteger(amount) || amount <= 0) {
+      throw new BadRequestException(
+        'Invalid refund amount in webhook payload',
+      );
+    }
+
+    const refund =
+      await this.prisma.refund.findUnique({
+        where: {
+          razorpayRefundId,
+        },
+        include: {
+          paymentTransaction: true,
+        },
+      });
+
+    if (!refund) {
+      return {
+        received: true,
+        processed: false,
+        event,
+        reason: 'Refund record not found',
+        refundId: razorpayRefundId,
+      };
+    }
+
+    const paymentTransaction =
+      refund.paymentTransaction;
+
+    if (
+      !paymentTransaction.razorpayPaymentId ||
+      paymentTransaction.razorpayPaymentId !==
+        razorpayPaymentId
+    ) {
+      throw new BadRequestException(
+        'Razorpay refund payment ID does not match the payment transaction',
+      );
+    }
+
+    if (refund.amountInPaise !== amount) {
+      throw new BadRequestException(
+        'Razorpay refund amount does not match the refund record',
+      );
+    }
+
+    let nextRefundStatus:
+      | 'PENDING'
+      | 'PROCESSED'
+      | 'FAILED';
+
+    if (razorpayRefundStatus === 'processed') {
+      nextRefundStatus = 'PROCESSED';
+    } else if (razorpayRefundStatus === 'failed') {
+      nextRefundStatus = 'FAILED';
+    } else {
+      nextRefundStatus = 'PENDING';
+    }
+
+    if (refund.status === 'PROCESSED') {
+      return {
+        received: true,
+        processed: false,
+        event,
+        reason: 'Refund is already processed',
+        refundId: refund.razorpayRefundId,
+        paymentTransactionId:
+          paymentTransaction.id,
+        status: refund.status,
+      };
+    }
+
+    if (refund.status === 'FAILED') {
+      return {
+        received: true,
+        processed: false,
+        event,
+        reason: 'Refund has already failed',
+        refundId: refund.razorpayRefundId,
+        paymentTransactionId:
+          paymentTransaction.id,
+        status: refund.status,
+      };
+    }
+
+    if (
+      refund.status === nextRefundStatus
+    ) {
+      return {
+        received: true,
+        processed: false,
+        event,
+        reason: `Refund is already in ${refund.status} state`,
+        refundId: refund.razorpayRefundId,
+        paymentTransactionId:
+          paymentTransaction.id,
+        status: refund.status,
+      };
+    }
+
+    const result =
+      await this.prisma.$transaction(async (tx) => {
+        const updatedRefund =
+          await tx.refund.update({
+            where: {
+              id: refund.id,
+            },
+            data: {
+              status: nextRefundStatus,
+            },
+          });
+
+        const processedAggregate =
+          await tx.refund.aggregate({
+            where: {
+              paymentTransactionId:
+                paymentTransaction.id,
+              status: 'PROCESSED',
+            },
+            _sum: {
+              amountInPaise: true,
+            },
+          });
+
+        const pendingCount =
+          await tx.refund.count({
+            where: {
+              paymentTransactionId:
+                paymentTransaction.id,
+              status: 'PENDING',
+            },
+          });
+
+        const cumulativeRefundedInPaise =
+          processedAggregate._sum.amountInPaise ?? 0;
+
+        let paymentStatus:
+          | 'PAID'
+          | 'REFUND_PENDING'
+          | 'REFUNDED';
+
+        if (
+          cumulativeRefundedInPaise >=
+          paymentTransaction.amountInPaise
+        ) {
+          paymentStatus = 'REFUNDED';
+        } else if (pendingCount > 0) {
+          paymentStatus = 'REFUND_PENDING';
+        } else {
+          paymentStatus = 'PAID';
+        }
+
+        const updatedPayment =
+          await tx.paymentTransaction.update({
+            where: {
+              id: paymentTransaction.id,
+            },
+            data: {
+              status: paymentStatus,
+              refundedAmountInPaise:
+                cumulativeRefundedInPaise,
+            },
+          });
+
+        return {
+          refund: updatedRefund,
+          payment: updatedPayment,
+          cumulativeRefundedInPaise,
+        };
+      });
+
+    return {
+      received: true,
+      processed: true,
+      event,
+      refundId: result.refund.razorpayRefundId,
+      paymentTransactionId:
+        result.payment.id,
+      refundStatus: result.refund.status,
+      paymentStatus: result.payment.status,
+      refundedAmountInPaise:
+        result.cumulativeRefundedInPaise,
     };
   }
 }
