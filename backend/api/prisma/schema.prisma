@@ -290,7 +290,8 @@ model PaymentTransaction {
 model Refund {
   id                   String       @id @default(uuid())
   paymentTransactionId String
-  razorpayRefundId     String       @unique
+  idempotencyKey       String
+  razorpayRefundId     String?       @unique
   amountInPaise        Int
   status               RefundStatus
   reason               String?
@@ -299,6 +300,7 @@ model Refund {
 
   paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
 
+  @@unique([paymentTransactionId, idempotencyKey])
   @@index([paymentTransactionId])
   @@index([status])
 }
