@@ -57,4 +57,16 @@ async updateOrderStatus(
     dto,
   );
 }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard)
+  async cancelOrder(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') orderId: string,
+  ) {
+    return this.ordersService.cancelOrder(
+      user.userId,
+      orderId,
+    );
+  }
 }
