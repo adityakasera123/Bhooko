@@ -6,6 +6,7 @@ import {
   SettlementCalculationResult,
 } from './settlement-calculator.service';
 import { SettlementEligibilityService } from './settlement-eligibility.service';
+import { SettlementReconciliationService } from './settlement-reconciliation.service';
 import { SettlementStateMachineService } from './settlement-state-machine.service';
 
 export interface CreateSettlementInput {
@@ -22,6 +23,7 @@ export class SettlementService {
     private readonly calculator: SettlementCalculatorService,
     private readonly eligibility: SettlementEligibilityService,
     private readonly stateMachine: SettlementStateMachineService,
+    private readonly reconciliation: SettlementReconciliationService,
   ) {}
 
   async createSettlement(
@@ -62,14 +64,10 @@ export class SettlementService {
         const existing = order.settlement;
 
         const calculation: SettlementCalculationResult = {
-          grossAmountInPaise:
-            existing.grossAmountInPaise,
-          refundAmountInPaise:
-            existing.refundAmountInPaise,
-          adjustmentAmountInPaise:
-            existing.adjustmentAmountInPaise,
-          platformFeeInPaise:
-            existing.platformFeeInPaise,
+          grossAmountInPaise: existing.grossAmountInPaise,
+          refundAmountInPaise: existing.refundAmountInPaise,
+          adjustmentAmountInPaise: existing.adjustmentAmountInPaise,
+          platformFeeInPaise: existing.platformFeeInPaise,
           restaurantPayableInPaise:
             existing.restaurantPayableInPaise,
         };
@@ -167,6 +165,37 @@ export class SettlementService {
         status: settlement.status,
         calculation,
       };
+    });
+  }
+
+  /**
+   * Reconcile a settlement's recorded restaurant payable
+   * against the expected payable amount.
+   *
+   * This is a read-only reconciliation operation.
+   * It does not modify the settlement record.
+   */
+  async reconcileSettlement(
+    settlementId: string,
+    expectedRestaurantPayableInPaise: number,
+  ) {
+    const settlement =
+      await this.prisma.settlement.findUnique({
+        where: {
+          id: settlementId,
+        },
+      });
+
+    if (!settlement) {
+      throw new NotFoundException(
+        'Settlement not found',
+      );
+    }
+
+    return this.reconciliation.reconcile({
+      expectedRestaurantPayableInPaise,
+      recordedRestaurantPayableInPaise:
+        settlement.restaurantPayableInPaise,
     });
   }
 }

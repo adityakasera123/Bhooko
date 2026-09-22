@@ -5,6 +5,7 @@ import { SettlementCalculatorService } from './settlement-calculator.service';
 import { SettlementEligibilityService } from './settlement-eligibility.service';
 import { SettlementStateMachineService } from './settlement-state-machine.service';
 import { SettlementService } from './settlement.service';
+import { SettlementReconciliationService } from './settlement-reconciliation.service';
 
 type MockOrder = {
   id: string;
@@ -93,12 +94,13 @@ describe('Settlement Idempotency & Concurrency', () => {
       },
     );
 
-    service = new SettlementService(
-      prismaMock as unknown as PrismaService,
-      new SettlementCalculatorService(),
-      new SettlementEligibilityService(),
-      new SettlementStateMachineService(),
-    );
+   service = new SettlementService(
+  prismaMock as unknown as PrismaService,
+  new SettlementCalculatorService(),
+  new SettlementEligibilityService(),
+  new SettlementStateMachineService(),
+  new SettlementReconciliationService(),
+);
   });
 
   it('should not create a duplicate when settlement already exists', async () => {

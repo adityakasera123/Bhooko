@@ -4,6 +4,7 @@ import { SettlementStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementCalculatorService } from './settlement-calculator.service';
 import { SettlementEligibilityService } from './settlement-eligibility.service';
+import { SettlementReconciliationService } from './settlement-reconciliation.service';
 import { SettlementService } from './settlement.service';
 import { SettlementStateMachineService } from './settlement-state-machine.service';
 
@@ -94,12 +95,13 @@ describe('SettlementService', () => {
       },
     );
 
-   service = new SettlementService(
-  prismaMock as unknown as PrismaService,
-  new SettlementCalculatorService(),
-  new SettlementEligibilityService(),
-  new SettlementStateMachineService(),
-);
+    service = new SettlementService(
+      prismaMock as unknown as PrismaService,
+      new SettlementCalculatorService(),
+      new SettlementEligibilityService(),
+      new SettlementStateMachineService(),
+      new SettlementReconciliationService(),
+    );
   });
 
   it('should throw when order does not exist', async () => {
@@ -175,6 +177,7 @@ describe('SettlementService', () => {
     });
 
     expect(result.settlementId).toBe('settlement-1');
+
     expect(result.status).toBe(
       SettlementStatus.ELIGIBLE,
     );
