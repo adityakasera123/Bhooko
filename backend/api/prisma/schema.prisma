@@ -95,6 +95,15 @@ enum RefundStatus {
   FAILED
 }
 
+enum SettlementStatus {
+  PENDING
+  ELIGIBLE
+  PROCESSING
+  SETTLED
+  ON_HOLD
+  FAILED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -146,10 +155,11 @@ model Restaurant {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  owner      User           @relation(fields: [ownerId], references: [id])
-  categories FoodCategory[]
-  foodItems  FoodItem[]
-  orders     Order[]
+  owner       User           @relation(fields: [ownerId], references: [id])
+  categories  FoodCategory[]
+  foodItems   FoodItem[]
+  orders      Order[]
+  settlements Settlement[]
 
   @@index([ownerId])
 }
@@ -281,6 +291,7 @@ model Order {
   restaurant         Restaurant          @relation(fields: [restaurantId], references: [id])
   items              OrderItem[]
   paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
+  settlement         Settlement?
 
   @@index([customerId])
   @@index([restaurantId])
@@ -328,6 +339,7 @@ model PaymentTransaction {
   orders                Order[]
   refunds               Refund[]
   reconciliationRecords ReconciliationRecord[]
+  settlements           Settlement[]
 
   @@index([customerId])
   @@index([status])
@@ -350,6 +362,36 @@ model Refund {
   @@unique([paymentTransactionId, idempotencyKey])
   @@index([paymentTransactionId])
   @@index([status])
+}
+
+model Settlement {
+  id                   String @id @default(uuid())
+  orderId              String @unique
+  restaurantId         String
+  paymentTransactionId String
+
+  grossAmountInPaise       Int
+  refundAmountInPaise      Int @default(0)
+  adjustmentAmountInPaise  Int @default(0)
+  platformFeeInPaise       Int @default(0)
+  restaurantPayableInPaise Int
+
+  status     SettlementStatus @default(PENDING)
+  eligibleAt DateTime?
+  settledAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order              Order              @relation(fields: [orderId], references: [id])
+  restaurant         Restaurant         @relation(fields: [restaurantId], references: [id])
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id])
+
+  @@index([restaurantId])
+  @@index([paymentTransactionId])
+  @@index([status])
+  @@index([eligibleAt])
+  @@index([createdAt])
 }
 
 model ReconciliationRun {
