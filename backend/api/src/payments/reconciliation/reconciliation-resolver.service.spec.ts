@@ -244,6 +244,34 @@ describe('ReconciliationResolver', () => {
       'FLAG_REVIEW',
     );
   });
+  
+  it('should flag PAID payment with external failed status for review', () => {
+    const result: ReconciliationMatchResult = {
+      entityType: 'PAYMENT',
+      resultStatus: 'MISMATCH',
+      mismatchType: 'STATUS_MISMATCH',
+      mismatchTypes: ['STATUS_MISMATCH'],
+      verification: {
+        identityMatched: true,
+        mappingMatched: true,
+        amountMatched: true,
+        currencyMatched: true,
+        statusMatched: false,
+      },
+      localState: 'PAID',
+      externalState: 'failed',
+      reason: 'Payment status mismatch detected',
+    };
+
+    const resolution = resolver.resolve(result);
+
+    expect(resolution.action).toBe('FLAG_REVIEW');
+    expect(resolution.resolutionStatus).toBe(
+      'REVIEW_REQUIRED',
+    );
+    expect(resolution.newLocalState).toBe('PAID');
+    expect(resolution.resolutionRule).toBeNull();
+  });
 
   it('should flag unknown external status for review', () => {
     const result: ReconciliationMatchResult = {

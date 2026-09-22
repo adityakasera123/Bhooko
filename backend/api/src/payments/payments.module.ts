@@ -9,6 +9,10 @@ import { RazorpayReconciliationProvider } from './reconciliation/razorpay-reconc
 import { ReconciliationResolver } from './reconciliation/reconciliation-resolver.service';
 import { ReconciliationResolutionService } from './reconciliation/reconciliation-resolution.service';
 
+import { ReconciliationRunService } from './reconciliation/reconciliation-run.service';
+import { ReconciliationMatcher } from './reconciliation/reconciliation-matcher.service';
+
+
 @Module({
   imports: [AuthModule],
 
@@ -16,16 +20,20 @@ import { ReconciliationResolutionService } from './reconciliation/reconciliation
   PaymentsService,
   RazorpayService,
   RazorpayReconciliationProvider,
-  ReconciliationResolver,
+  ReconciliationMatcher,
   ReconciliationResolutionService,
+  ReconciliationRunService,
 ],
 
   controllers: [PaymentsController],
 
   exports: [
-    PaymentsService,
-    RazorpayService,
-    RazorpayReconciliationProvider,
-  ],
+  PaymentsService,
+  RazorpayService,
+  RazorpayReconciliationProvider,
+  ReconciliationResolver,
+  ReconciliationResolutionService,
+  ReconciliationRunService,
+],
 })
 export class PaymentsModule {}

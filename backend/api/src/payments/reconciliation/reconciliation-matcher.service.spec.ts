@@ -234,4 +234,82 @@ describe('ReconciliationMatcher', () => {
       'LOCAL_RECORD_MISSING',
     );
   });
+
+    it('should match FAILED local payment with failed external payment', () => {
+    const result = matcher.matchPayment(
+      {
+        id: 'payment-1',
+        razorpayPaymentId: 'pay_123',
+        razorpayOrderId: 'order_123',
+        amountInPaise: 18000,
+        currency: 'INR',
+        status: 'FAILED',
+      },
+      {
+        id: 'pay_123',
+        orderId: 'order_123',
+        amountInPaise: 18000,
+        currency: 'INR',
+        status: 'failed',
+        createdAt: new Date(),
+      },
+    );
+
+    expect(result.resultStatus).toBe('MATCHED');
+    expect(result.mismatchType).toBe('NONE');
+    expect(result.mismatchTypes).toEqual([]);
+    expect(result.verification.statusMatched).toBe(true);
+  });
+
+  it('should detect status mismatch when local payment is PENDING but external payment is failed', () => {
+    const result = matcher.matchPayment(
+      {
+        id: 'payment-2',
+        razorpayPaymentId: 'pay_123',
+        razorpayOrderId: 'order_123',
+        amountInPaise: 18000,
+        currency: 'INR',
+        status: 'PENDING',
+      },
+      {
+        id: 'pay_123',
+        orderId: 'order_123',
+        amountInPaise: 18000,
+        currency: 'INR',
+        status: 'failed',
+        createdAt: new Date(),
+      },
+    );
+
+    expect(result.resultStatus).toBe('MISMATCH');
+    expect(result.mismatchType).toBe('STATUS_MISMATCH');
+    expect(result.mismatchTypes).toContain('STATUS_MISMATCH');
+    expect(result.verification.statusMatched).toBe(false);
+  });
+
+  it('should detect status mismatch when local payment is PAID but external payment is failed', () => {
+    const result = matcher.matchPayment(
+      {
+        id: 'payment-3',
+        razorpayPaymentId: 'pay_123',
+        razorpayOrderId: 'order_123',
+        amountInPaise: 18000,
+        currency: 'INR',
+        status: 'PAID',
+      },
+      {
+        id: 'pay_123',
+        orderId: 'order_123',
+        amountInPaise: 18000,
+        currency: 'INR',
+        status: 'failed',
+        createdAt: new Date(),
+      },
+    );
+
+    expect(result.resultStatus).toBe('MISMATCH');
+    expect(result.mismatchType).toBe('STATUS_MISMATCH');
+    expect(result.mismatchTypes).toContain('STATUS_MISMATCH');
+    expect(result.verification.statusMatched).toBe(false);
+  });
 });

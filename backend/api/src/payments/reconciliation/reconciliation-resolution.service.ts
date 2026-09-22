@@ -132,4 +132,118 @@ export class ReconciliationResolutionService {
       return record;
     });
   }
+
+  async resolveRefund(
+    reconciliationRunId: string,
+    refundId: string,
+    result: ReconciliationMatchResult,
+  ) {
+    const resolution = this.resolver.resolve(result);
+
+    return this.prisma.$transaction(async (tx) => {
+      const refund = await tx.refund.findUnique({
+        where: {
+          id: refundId,
+        },
+      });
+
+      if (!refund) {
+        throw new InternalServerErrorException(
+          `Refund ${refundId} not found`,
+        );
+      }
+
+      const existingRecord =
+        await tx.reconciliationRecord.findUnique({
+          where: {
+            reconciliationRunId_entityType_entityExternalId: {
+              reconciliationRunId,
+              entityType: 'REFUND',
+              entityExternalId:
+                refund.razorpayRefundId ?? refundId,
+            },
+          },
+        });
+
+      if (existingRecord) {
+        return existingRecord;
+      }
+
+      const oldLocalState = refund.status;
+
+      let newLocalState = oldLocalState;
+
+      if (
+        resolution.action === 'AUTO_RESOLVE' &&
+        resolution.newLocalState
+      ) {
+        newLocalState = resolution.newLocalState as
+          | 'PENDING'
+          | 'PROCESSED'
+          | 'FAILED';
+
+        if (newLocalState !== oldLocalState) {
+          await tx.refund.update({
+            where: {
+              id: refundId,
+            },
+            data: {
+              status: newLocalState,
+            },
+          });
+        }
+      }
+
+      const record =
+        await tx.reconciliationRecord.create({
+          data: {
+            reconciliationRunId,
+            refundId,
+            entityType: 'REFUND',
+            entityExternalId:
+              refund.razorpayRefundId ?? refundId,
+            mismatchType: result.mismatchType,
+            localState: oldLocalState,
+            externalState: result.externalState,
+            localAmountInPaise:
+              refund.amountInPaise,
+            externalAmountInPaise:
+              result.verification.amountMatched
+                ? refund.amountInPaise
+                : null,
+            localCurrency: 'INR',
+            externalCurrency:
+              result.verification.currencyMatched
+                ? 'INR'
+                : null,
+            action:
+              resolution.action === 'AUTO_RESOLVE'
+                ? 'AUTO_RESOLVE'
+                : resolution.action === 'FLAG_REVIEW'
+                  ? 'FLAG_REVIEW'
+                  : 'NONE',
+            resolutionStatus:
+              resolution.resolutionStatus ===
+              'AUTO_RESOLVED'
+                ? 'AUTO_RESOLVED'
+                : resolution.resolutionStatus ===
+                    'REVIEW_REQUIRED'
+                  ? 'REVIEW_REQUIRED'
+                  : 'MATCHED',
+            oldLocalState,
+            newLocalState,
+            resolutionRule:
+              resolution.resolutionRule,
+            resolutionReason:
+              resolution.resolutionReason,
+            resolvedAt:
+              resolution.action === 'AUTO_RESOLVE'
+                ? new Date()
+                : null,
+          },
+        });
+
+      return record;
+    });
+  }
 }

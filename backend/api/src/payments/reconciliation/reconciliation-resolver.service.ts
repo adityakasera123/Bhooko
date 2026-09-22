@@ -62,11 +62,11 @@ export class ReconciliationResolver {
       return this.flagForReview(result);
     }
 
-    const newLocalState =
-      this.getSafeLocalState(
-        result.externalState,
-        result.entityType,
-      );
+    const newLocalState = this.getSafeLocalState(
+      result.externalState,
+      result.entityType,
+      result.localState,
+    );
 
     if (newLocalState === null) {
       return this.flagForReview(result);
@@ -88,17 +88,24 @@ export class ReconciliationResolver {
   private getSafeLocalState(
     externalState: string,
     entityType: 'PAYMENT' | 'REFUND',
+    localState: string,
   ): string | null {
     if (entityType === 'PAYMENT') {
       switch (externalState.toLowerCase()) {
         case 'captured':
-          return 'PAID';
+          return localState === 'PENDING'
+            ? 'PAID'
+            : null;
 
         case 'failed':
-          return 'FAILED';
+          return localState === 'PENDING'
+            ? 'FAILED'
+            : null;
 
         case 'refunded':
-          return 'REFUNDED';
+          return localState === 'PAID'
+            ? 'REFUNDED'
+            : null;
 
         default:
           return null;
