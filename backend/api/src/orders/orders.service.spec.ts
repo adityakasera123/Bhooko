@@ -57,10 +57,12 @@ describe('OrdersService', () => {
             useValue: orderStateMachineMock,
           },
 
-          {
+         {
   provide: PaymentsService,
   useValue: {
     requestRefund: jest.fn(),
+    reserveRefundInTransaction: jest.fn(),
+    executeReservedRefund: jest.fn(),
   },
 },
         ],
@@ -545,134 +547,288 @@ describe('OrdersService', () => {
   });
 });
 
-it('should allow a restaurant owner to reject their own order', async () => {
-  prismaMock.order.findUnique.mockResolvedValue({
-    id: 'order-1',
-    restaurantId: 'restaurant-1',
-    status: 'CREATED',
-  });
+  it('should reject a restaurant order without immediate refund when payment is not captured', async () => {
+    const tx: any = {
+      order: {
+        findUnique: mockResolved({
+          id: 'order-1',
+          restaurantId: 'restaurant-1',
+          status: 'CREATED',
+          totalInPaise: 18000,
+          paymentTransaction: {
+            id: 'payment-1',
+            status: 'PENDING',
+          },
+        }),
+        update: mockResolved({
+          id: 'order-1',
+          status: 'CANCELLED',
+        }),
+      },
+      restaurant: {
+        findUnique: mockResolved({
+          id: 'restaurant-1',
+          ownerId: 'restaurant-owner-1',
+        }),
+      },
+    };
 
-  prismaMock.restaurant.findUnique.mockResolvedValue({
-    id: 'restaurant-1',
-    ownerId: 'restaurant-owner-1',
-  });
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(tx),
+    );
 
-  prismaMock.order.update.mockResolvedValue({
+    const result = await service.rejectOrder(
+      'restaurant-owner-1',
+      'order-1',
+    );
+
+    expect(tx.order.update).toHaveBeenCalledWith({
+  where: {
     id: 'order-1',
+  },
+  data: {
     status: 'CANCELLED',
-  });
+    cancellationSource: 'RESTAURANT',
+  },
+});
 
-  const result = await service.rejectOrder(
-    'restaurant-owner-1',
-    'order-1',
-  );
+    expect(
+      service['paymentsService']
+        .reserveRefundInTransaction,
+    ).not.toHaveBeenCalled();
 
-  expect(prismaMock.order.update).toHaveBeenCalledWith({
-    where: {
+    expect(
+      service['paymentsService']
+        .executeReservedRefund,
+    ).not.toHaveBeenCalled();
+
+    expect(result).toEqual({
       id: 'order-1',
-    },
-    data: {
       status: 'CANCELLED',
-    },
+    });
   });
 
-  expect(result).toEqual({
+  it('should reject a paid restaurant order and execute an order-specific refund', async () => {
+    const tx: any = {
+      order: {
+        findUnique: mockResolved({
+          id: 'order-1',
+          restaurantId: 'restaurant-1',
+          status: 'CREATED',
+          totalInPaise: 18000,
+          paymentTransaction: {
+            id: 'payment-1',
+            status: 'PAID',
+          },
+        }),
+        update: mockResolved({
+          id: 'order-1',
+          status: 'CANCELLED',
+        }),
+      },
+      restaurant: {
+        findUnique: mockResolved({
+          id: 'restaurant-1',
+          ownerId: 'restaurant-owner-1',
+        }),
+      },
+    };
+
+    const refundReservation = {
+      id: 'refund-1',
+      paymentTransactionId: 'payment-1',
+      orderId: 'order-1',
+      amountInPaise: 18000,
+      status: 'PENDING',
+    };
+
+    const processedRefund = {
+      id: 'refund-1',
+      paymentTransactionId: 'payment-1',
+      orderId: 'order-1',
+      amountInPaise: 18000,
+      status: 'PROCESSED',
+      razorpayRefundId: 'rfnd-1',
+    };
+
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(tx),
+    );
+
+  (service['paymentsService'].reserveRefundInTransaction as any).mockResolvedValue(
+  refundReservation,
+);
+
+(service['paymentsService'].executeReservedRefund as any).mockResolvedValue(
+  processedRefund,
+);
+
+    const result = await service.rejectOrder(
+      'restaurant-owner-1',
+      'order-1',
+    );
+
+    expect(
+      service['paymentsService']
+        .reserveRefundInTransaction,
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        paymentTransactionId: 'payment-1',
+        amountInPaise: 18000,
+        reason: 'Restaurant rejected order',
+        idempotencyKey: 'restaurant-rejection:order-1',
+        orderId: 'order-1',
+      },
+    );
+
+    expect(tx.order.update).toHaveBeenCalledWith({
+  where: {
     id: 'order-1',
+  },
+  data: {
     status: 'CANCELLED',
-  });
+    cancellationSource: 'RESTAURANT',
+  },
 });
 
-it('should reject when the order does not exist', async () => {
-  prismaMock.order.findUnique.mockResolvedValue(null);
+    expect(
+      service['paymentsService']
+        .executeReservedRefund,
+    ).toHaveBeenCalledWith('refund-1');
 
-  await expect(
-    service.rejectOrder(
-      'restaurant-owner-1',
-      'order-1',
-    ),
-  ).rejects.toThrow('Order not found');
-});
-
-it('should reject when the restaurant owner does not own the order restaurant', async () => {
-  prismaMock.order.findUnique.mockResolvedValue({
-    id: 'order-1',
-    restaurantId: 'restaurant-1',
-    status: 'CREATED',
+    expect(result).toEqual({
+      id: 'order-1',
+      status: 'CANCELLED',
+      refund: processedRefund,
+    });
   });
 
-  prismaMock.restaurant.findUnique.mockResolvedValue({
-    id: 'restaurant-1',
-    ownerId: 'restaurant-owner-2',
+  it('should reject when the order does not exist', async () => {
+    const tx: any = {
+      order: {
+        findUnique: mockResolved(null),
+      },
+    };
+
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(tx),
+    );
+
+    await expect(
+      service.rejectOrder(
+        'restaurant-owner-1',
+        'order-1',
+      ),
+    ).rejects.toThrow('Order not found');
   });
 
-  await expect(
-    service.rejectOrder(
-      'restaurant-owner-1',
-      'order-1',
-    ),
-  ).rejects.toThrow(
-    'You are not allowed to reject this restaurant order',
-  );
-});
+  it('should reject when the restaurant owner does not own the order restaurant', async () => {
+    const tx: any = {
+      order: {
+        findUnique: mockResolved({
+          id: 'order-1',
+          restaurantId: 'restaurant-1',
+          status: 'CREATED',
+          totalInPaise: 18000,
+          paymentTransaction: null,
+        }),
+      },
+      restaurant: {
+        findUnique: mockResolved({
+          id: 'restaurant-1',
+          ownerId: 'restaurant-owner-2',
+        }),
+      },
+    };
 
-it('should reject when the order cannot transition to CANCELLED', async () => {
-  orderStateMachineMock.assertTransitionAllowed.mockImplementation(
-  () => {
-    throw new ForbiddenException(
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(tx),
+    );
+
+    await expect(
+      service.rejectOrder(
+        'restaurant-owner-1',
+        'order-1',
+      ),
+    ).rejects.toThrow(
+      'You are not allowed to reject this restaurant order',
+    );
+  });
+
+  it('should reject when the order cannot transition to CANCELLED', async () => {
+    orderStateMachineMock.assertTransitionAllowed.mockImplementation(
+      () => {
+        throw new ForbiddenException(
+          'Order cannot move from DELIVERED to CANCELLED',
+        );
+      },
+    );
+
+    const tx: any = {
+      order: {
+        findUnique: mockResolved({
+          id: 'order-1',
+          restaurantId: 'restaurant-1',
+          status: 'DELIVERED',
+          totalInPaise: 18000,
+          paymentTransaction: null,
+        }),
+      },
+      restaurant: {
+        findUnique: mockResolved({
+          id: 'restaurant-1',
+          ownerId: 'restaurant-owner-1',
+        }),
+      },
+    };
+
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(tx),
+    );
+
+    await expect(
+      service.rejectOrder(
+        'restaurant-owner-1',
+        'order-1',
+      ),
+    ).rejects.toThrow(
       'Order cannot move from DELIVERED to CANCELLED',
     );
-  },
-);
-  prismaMock.order.findUnique.mockResolvedValue({
-    id: 'order-1',
-    restaurantId: 'restaurant-1',
-    status: 'DELIVERED',
   });
 
-  prismaMock.restaurant.findUnique.mockResolvedValue({
-    id: 'restaurant-1',
-    ownerId: 'restaurant-owner-1',
+  it('should not allow a customer to reject an order', async () => {
+    const tx: any = {
+      order: {
+        findUnique: mockResolved({
+          id: 'order-1',
+          restaurantId: 'restaurant-1',
+          status: 'CREATED',
+          totalInPaise: 18000,
+          paymentTransaction: null,
+        }),
+      },
+      restaurant: {
+        findUnique: mockResolved({
+          id: 'restaurant-1',
+          ownerId: 'restaurant-owner-1',
+        }),
+      },
+    };
+
+    prismaMock.$transaction.mockImplementation(
+      async (callback: any) => callback(tx),
+    );
+
+    await expect(
+      service.rejectOrder(
+        'customer-1',
+        'order-1',
+      ),
+    ).rejects.toThrow(
+      'You are not allowed to reject this restaurant order',
+    );
   });
-
-  await expect(
-    service.rejectOrder(
-      'restaurant-owner-1',
-      'order-1',
-    ),
-  ).rejects.toThrow(
-    'Order cannot move from DELIVERED to CANCELLED',
-  );
-
-  expect(
-    prismaMock.order.update,
-  ).not.toHaveBeenCalled();
-});
-
-it('should not allow a customer to reject an order', async () => {
-  prismaMock.order.findUnique.mockResolvedValue({
-    id: 'order-1',
-    restaurantId: 'restaurant-1',
-    status: 'CREATED',
-  });
-
-  prismaMock.restaurant.findUnique.mockResolvedValue({
-    id: 'restaurant-1',
-    ownerId: 'restaurant-owner-1',
-  });
-
-  await expect(
-    service.rejectOrder(
-      'customer-1',
-      'order-1',
-    ),
-  ).rejects.toThrow(
-    'You are not allowed to reject this restaurant order',
-  );
-
-  expect(
-    prismaMock.order.update,
-  ).not.toHaveBeenCalled();
-});
 
 
 it('should reject accepting a non-existent order', async () => {
@@ -911,19 +1067,20 @@ it('should reject restaurant owner from accepting another restaurant order', asy
   );
 
   prismaMock.order = {
-    findFirst: mockResolved({
-      id: 'order-4',
-      customerId: 'customer-1',
-      restaurantId: 'restaurant-1',
-      status: 'CREATED',
-    }),
-    update: mockResolved({
-      id: 'order-4',
-      customerId: 'customer-1',
-      restaurantId: 'restaurant-1',
-      status: 'CANCELLED',
-    }),
-  };
+  findFirst: mockResolved({
+    id: 'order-4',
+    customerId: 'customer-1',
+    restaurantId: 'restaurant-1',
+    status: 'CREATED',
+  }),
+  update: mockResolved({
+    id: 'order-4',
+    customerId: 'customer-1',
+    restaurantId: 'restaurant-1',
+    status: 'CANCELLED',
+    cancellationSource: 'CUSTOMER',
+  }),
+};
 
   await service.cancelOrder('customer-1', 'order-4');
 
@@ -934,16 +1091,17 @@ it('should reject restaurant owner from accepting another restaurant order', asy
     'CANCELLED',
   );
 
-  expect(
-    prismaMock.order.update,
-  ).toHaveBeenCalledWith({
-    where: {
-      id: 'order-4',
-    },
-    data: {
-      status: 'CANCELLED',
-    },
-  });
+ expect(
+  prismaMock.order.update,
+).toHaveBeenCalledWith({
+  where: {
+    id: 'order-4',
+  },
+  data: {
+    status: 'CANCELLED',
+    cancellationSource: 'CUSTOMER',
+  },
+});
   });
 
   it('should reject customer from cancelling another customer order', async () => {

@@ -453,6 +453,39 @@ export class PaymentsService {
     return createdRefund;
   }
 
+  private async reserveCancelledOrderRefundsInTransaction(
+  tx: Prisma.TransactionClient,
+  paymentTransactionId: string,
+) {
+ const cancelledOrders = await tx.order.findMany({
+  where: {
+    paymentTransactionId,
+    status: 'CANCELLED',
+    cancellationSource: 'RESTAURANT',
+  },
+    select: {
+      id: true,
+      totalInPaise: true,
+    },
+  });
+
+  const refundReservations = [];
+
+  for (const order of cancelledOrders) {
+    const refund = await this.reserveRefundInTransaction(tx, {
+      paymentTransactionId,
+      amountInPaise: order.totalInPaise,
+      reason: 'Restaurant rejected order',
+      idempotencyKey: `restaurant-rejection:${order.id}`,
+      orderId: order.id,
+    });
+
+    refundReservations.push(refund);
+  }
+
+  return refundReservations;
+}
+
    async executeReservedRefund(
     refundId: string,
   ) {
@@ -919,32 +952,48 @@ export class PaymentsService {
       );
     }
 
-    const updatedPaymentTransaction =
-      await this.prisma.$transaction(async (tx) => {
-        const updatedPayment =
-          await tx.paymentTransaction.update({
-            where: {
-              id: paymentTransaction.id,
-            },
-            data: {
-              status: 'PAID',
-              razorpayPaymentId: dto.razorpayPaymentId,
-              razorpaySignature: dto.razorpaySignature,
-            },
-          });
-
-        await tx.order.updateMany({
-          where: {
-            paymentTransactionId: paymentTransaction.id,
-            status: 'CREATED',
-          },
-          data: {
-            status: 'CONFIRMED',
-          },
-        });
-
-        return updatedPayment;
+    const verificationResult =
+  await this.prisma.$transaction(async (tx) => {
+    const updatedPayment =
+      await tx.paymentTransaction.update({
+        where: {
+          id: paymentTransaction.id,
+        },
+        data: {
+          status: 'PAID',
+          razorpayPaymentId: dto.razorpayPaymentId,
+          razorpaySignature: dto.razorpaySignature,
+        },
       });
+
+    await tx.order.updateMany({
+      where: {
+        paymentTransactionId: paymentTransaction.id,
+        status: 'CREATED',
+      },
+      data: {
+        status: 'CONFIRMED',
+      },
+    });
+
+    const refundReservations =
+      await this.reserveCancelledOrderRefundsInTransaction(
+        tx,
+        paymentTransaction.id,
+      );
+
+    return {
+      updatedPayment,
+      refundReservations,
+    };
+  });
+
+const updatedPaymentTransaction =
+  verificationResult.updatedPayment;
+
+for (const refund of verificationResult.refundReservations) {
+  await this.executeReservedRefund(refund.id);
+}
 
     return {
       message: 'Payment verified successfully',

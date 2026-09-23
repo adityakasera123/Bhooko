@@ -326,41 +326,87 @@ async acceptOrder(userId: string, orderId: string) {
 }
 
 async rejectOrder(userId: string, orderId: string) {
-  const order = await this.prisma.order.findUnique({
-    where: {
-      id: orderId,
-    },
-  });
+  const result = await this.prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: {
+        id: orderId,
+      },
+      include: {
+        paymentTransaction: true,
+      },
+    });
 
-  if (!order) {
-    throw new NotFoundException('Order not found');
-  }
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
 
-  const restaurant = await this.prisma.restaurant.findUnique({
-    where: {
-      id: order.restaurantId,
-    },
-  });
+    const restaurant = await tx.restaurant.findUnique({
+      where: {
+        id: order.restaurantId,
+      },
+    });
 
-  if (!restaurant || restaurant.ownerId !== userId) {
-    throw new ForbiddenException(
-      'You are not allowed to reject this restaurant order',
+    if (!restaurant || restaurant.ownerId !== userId) {
+      throw new ForbiddenException(
+        'You are not allowed to reject this restaurant order',
+      );
+    }
+
+    this.orderStateMachine.assertTransitionAllowed(
+      order.status,
+      'CANCELLED',
     );
+
+    let refundReservation = null;
+
+    if (
+      order.paymentTransaction &&
+      (order.paymentTransaction.status === 'PAID' ||
+        order.paymentTransaction.status === 'REFUND_PENDING')
+    ) {
+      refundReservation =
+        await this.paymentsService.reserveRefundInTransaction(
+          tx,
+          {
+            paymentTransactionId:
+              order.paymentTransaction.id,
+            amountInPaise: order.totalInPaise,
+            reason: 'Restaurant rejected order',
+            idempotencyKey: `restaurant-rejection:${order.id}`,
+            orderId: order.id,
+          },
+        );
+    }
+
+    const cancelledOrder = await tx.order.update({
+      where: {
+        id: orderId,
+      },
+      data: {
+  status: 'CANCELLED',
+  cancellationSource: 'RESTAURANT',
+},
+    });
+
+    return {
+      order: cancelledOrder,
+      refundReservation,
+    };
+  });
+
+  if (result.refundReservation) {
+    const refund =
+      await this.paymentsService.executeReservedRefund(
+        result.refundReservation.id,
+      );
+
+    return {
+      ...result.order,
+      refund,
+    };
   }
 
-  this.orderStateMachine.assertTransitionAllowed(
-    order.status,
-    'CANCELLED',
-  );
-
-  return this.prisma.order.update({
-    where: {
-      id: orderId,
-    },
-    data: {
-      status: 'CANCELLED',
-    },
-  });
+  return result.order;
 }
 
 async cancelOrder(userId: string, orderId: string) {
@@ -381,13 +427,14 @@ async cancelOrder(userId: string, orderId: string) {
   );
 
   return this.prisma.order.update({
-    where: {
-      id: orderId,
-    },
-    data: {
-      status: 'CANCELLED',
-    },
-  });
+  where: {
+    id: orderId,
+  },
+  data: {
+    status: 'CANCELLED',
+    cancellationSource: 'CUSTOMER',
+  },
+});
 }
 
 }

@@ -35,6 +35,13 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum OrderCancellationSource {
+  CUSTOMER
+  RESTAURANT
+  ADMIN
+  SYSTEM
+}
+
 enum PaymentStatus {
   CREATED
   PENDING
@@ -251,10 +258,11 @@ model CartItem {
 }
 
 model Order {
-  id           String      @id @default(uuid())
-  customerId   String
-  restaurantId String
-  status       OrderStatus @default(CREATED)
+  id                 String                   @id @default(uuid())
+  customerId         String
+  restaurantId       String
+  status             OrderStatus              @default(CREATED)
+  cancellationSource OrderCancellationSource?
 
   // Historical restaurant snapshot
   restaurantName String
