@@ -9,6 +9,7 @@ import { jest } from '@jest/globals';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
+import { PaymentsService } from '../payments/payments.service';
 import {
   UpdateOrderStatus,
   UpdateOrderStatusDto,
@@ -55,6 +56,13 @@ describe('OrdersService', () => {
             provide: OrderStateMachineService,
             useValue: orderStateMachineMock,
           },
+
+          {
+  provide: PaymentsService,
+  useValue: {
+    requestRefund: jest.fn(),
+  },
+},
         ],
       }).compile();
 

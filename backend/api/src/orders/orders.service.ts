@@ -10,6 +10,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { PricingService } from '../pricing/pricing.service';
 import { OrderStateMachineService } from './order-state-machine.service';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class OrdersService {
@@ -17,6 +18,7 @@ export class OrdersService {
   private readonly prisma: PrismaService,
   private readonly pricingService: PricingService,
   private readonly orderStateMachine: OrderStateMachineService,
+  private readonly paymentsService: PaymentsService,
 ) {}
 
 async createOrder(userId: string, dto: CreateOrderDto) {

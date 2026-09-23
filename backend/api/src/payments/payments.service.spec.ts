@@ -182,9 +182,9 @@ describe('PaymentsService', () => {
       paymentTransaction,
     );
 
-    prismaMock.paymentTransaction.findUnique
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction);
+   prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+  paymentTransaction,
+);
 
     prismaMock.refund.findUnique.mockImplementation(
       async ({ where }: any) => {
@@ -388,9 +388,9 @@ describe('PaymentsService', () => {
       paymentTransaction,
     );
 
-    prismaMock.paymentTransaction.findUnique
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction);
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+  paymentTransaction,
+);
 
     prismaMock.refund.findUnique.mockImplementation(
       async ({ where }: any) => {
@@ -542,11 +542,9 @@ describe('PaymentsService', () => {
       .mockResolvedValueOnce(paymentTransaction)
       .mockResolvedValueOnce(paymentTransaction);
 
-    prismaMock.paymentTransaction.findUnique
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction);
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+  paymentTransaction,
+);
 
     prismaMock.refund.findUnique.mockImplementation(
       async ({ where }: any) => {
@@ -750,9 +748,9 @@ describe('PaymentsService', () => {
       paymentTransaction,
     );
 
-    prismaMock.paymentTransaction.findUnique
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction);
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+  paymentTransaction,
+);
 
     const reservation = {
       id: 'refund-record-3',
@@ -764,10 +762,15 @@ describe('PaymentsService', () => {
       idempotencyKey: 'refund-test-6',
     };
 
-    prismaMock.refund.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(reservation);
+    prismaMock.refund.findUnique.mockImplementation(
+  async ({ where }: any) => {
+    if (where?.id === reservation.id) {
+      return reservation;
+    }
+
+    return null;
+  },
+);
 
     prismaMock.refund.create.mockResolvedValue(reservation);
     prismaMock.refund.update.mockResolvedValue({
@@ -842,69 +845,143 @@ describe('PaymentsService', () => {
     });
   });
 
-  it('should not create another refund when a refund is already pending', async () => {
-    const userId = 'customer-1';
-    const paymentTransactionId = 'payment-1';
+  it('should allow another refund when a previous refund is already pending', async () => {
+  const userId = 'customer-1';
+  const paymentTransactionId = 'payment-1';
 
-    const paymentTransaction = {
-      id: paymentTransactionId,
-      customerId: userId,
-      status: 'REFUND_PENDING',
-      amountInPaise: 18000,
-      currency: 'INR',
-      razorpayOrderId: 'order_test_123',
-      razorpayPaymentId: 'pay_test_123',
-      refundId: 'rfnd_test_pending',
-      refundedAmountInPaise: 9000,
-      refundReason: 'Missing item',
-      orders: [
-        {
-          id: 'order-1',
-          customerId: userId,
-        },
-      ],
-    };
-
-    prismaMock.paymentTransaction.findFirst.mockResolvedValue(
-      paymentTransaction,
-    );
-
-    const result = await service.requestRefund(
-      userId,
-      paymentTransactionId,
+  const paymentTransaction = {
+    id: paymentTransactionId,
+    customerId: userId,
+    status: 'REFUND_PENDING',
+    amountInPaise: 18000,
+    currency: 'INR',
+    razorpayOrderId: 'order_test_123',
+    razorpayPaymentId: 'pay_test_123',
+    refundId: 'rfnd_test_pending',
+    refundedAmountInPaise: 0,
+    refundReason: 'Missing item',
+    orders: [
       {
-        amountInPaise: 9000,
-        reason: 'Missing item',
-        idempotencyKey: 'refund-test-7',
-
+        id: 'order-1',
+        customerId: userId,
       },
-    );
+      {
+        id: 'order-2',
+        customerId: userId,
+      },
+    ],
+  };
 
-    expect(
-      razorpayServiceMock.createRefund,
-    ).not.toHaveBeenCalled();
+  const reservation = {
+    id: 'refund-record-new',
+    paymentTransactionId,
+    razorpayRefundId: null,
+    amountInPaise: 9000,
+    status: 'PENDING',
+    reason: 'Restaurant rejected order',
+    idempotencyKey: 'refund-test-7',
+  };
 
-    expect(
-      prismaMock.refund.create,
-    ).not.toHaveBeenCalled();
+  const razorpayRefund = {
+    id: 'rfnd_test_new',
+    status: 'pending',
+    amount: 9000,
+    payment_id: 'pay_test_123',
+  };
 
-    expect(
-      prismaMock.refund.aggregate,
-    ).not.toHaveBeenCalled();
+  const updatedRefund = {
+    ...reservation,
+    razorpayRefundId: razorpayRefund.id,
+    status: 'PENDING',
+  };
 
-    expect(
-      prismaMock.paymentTransaction.update,
-    ).not.toHaveBeenCalled();
+  prismaMock.paymentTransaction.findFirst.mockResolvedValue(
+    paymentTransaction,
+  );
 
-    expect(result).toEqual({
-      message: 'Refund is already pending',
+  prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+    paymentTransaction,
+  );
+
+  prismaMock.refund.findUnique.mockImplementation(
+  async (args: any) => {
+    if (args?.where?.id === reservation.id) {
+      return reservation;
+    }
+
+    return null;
+  },
+);
+
+  prismaMock.refund.aggregate.mockImplementation(
+    async (args: any) => ({
+      _sum: {
+        amountInPaise:
+          args?.where?.status === 'PENDING'
+            ? 9000
+            : 0,
+      },
+    }),
+  );
+
+  prismaMock.refund.count.mockResolvedValue(1);
+
+  prismaMock.refund.create.mockResolvedValue(
+    reservation,
+  );
+
+  prismaMock.refund.update.mockResolvedValue(
+    updatedRefund,
+  );
+
+  prismaMock.paymentTransaction.update.mockResolvedValue(
+    paymentTransaction,
+  );
+
+  razorpayServiceMock.createRefund.mockResolvedValue(
+    razorpayRefund,
+  );
+
+  const result = await service.requestRefund(
+    userId,
+    paymentTransactionId,
+    {
+      amountInPaise: 9000,
+      reason: 'Restaurant rejected order',
+      idempotencyKey: 'refund-test-7',
+    },
+  );
+
+  expect(
+    prismaMock.refund.create,
+  ).toHaveBeenCalledWith({
+    data: {
       paymentTransactionId,
-      refundId: 'rfnd_test_pending',
-      refundedAmountInPaise: 9000,
-      status: 'REFUND_PENDING',
-      orderIds: ['order-1'],
-    });
+      razorpayRefundId: null,
+      amountInPaise: 9000,
+      status: 'PENDING',
+      reason: 'Restaurant rejected order',
+      idempotencyKey: 'refund-test-7',
+    },
   });
+
+  expect(
+    razorpayServiceMock.createRefund,
+  ).toHaveBeenCalledWith(
+    'pay_test_123',
+    9000,
+    paymentTransactionId,
+  );
+
+  expect(result).toEqual({
+    message: 'Refund initiated successfully',
+    paymentTransactionId,
+    refundId: 'rfnd_test_new',
+    refundedAmountInPaise: 0,
+    status: 'REFUND_PENDING',
+    orderIds: ['order-1', 'order-2'],
+  });
+});
 
   it('should not create another refund when the payment is already refunded', async () => {
     const userId = 'customer-1';
@@ -1142,9 +1219,9 @@ describe('requestRefund concurrency protection', () => {
       paymentTransaction,
     );
 
-    prismaMock.paymentTransaction.findUnique
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction);
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+  paymentTransaction,
+);
 
     prismaMock.refund.findUnique.mockImplementation(
       async ({ where }: any) => {
@@ -1347,27 +1424,39 @@ describe('requestRefund concurrency protection', () => {
       paymentTransaction,
     );
 
-    prismaMock.paymentTransaction.findUnique
-      .mockResolvedValueOnce(paymentTransaction)
-      .mockResolvedValueOnce(paymentTransaction);
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+  paymentTransaction,
+);
 
-    prismaMock.refund.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);
+    const reservation = {
+  id: 'refund-reservation-1',
+  paymentTransactionId,
+  razorpayRefundId: null,
+  amountInPaise: 5000,
+  status: 'PENDING',
+  reason: 'Order issue',
+  idempotencyKey: 'refund-network-failure',
+};
 
-    prismaMock.refund.aggregate
-      .mockResolvedValueOnce({ _sum: { amountInPaise: 0 } })
-      .mockResolvedValueOnce({ _sum: { amountInPaise: 0 } });
+prismaMock.refund.findUnique.mockImplementation(
+  async ({ where }: any) => {
+    if (where?.id === reservation.id) {
+      return reservation;
+    }
 
-    prismaMock.refund.create.mockResolvedValue({
-      id: 'refund-reservation-1',
-      paymentTransactionId,
-      razorpayRefundId: null,
-      amountInPaise: 5000,
-      status: 'PENDING',
-      reason: 'Order issue',
-      idempotencyKey: 'refund-network-failure',
-    });
+    return null;
+  },
+);
+
+prismaMock.refund.aggregate.mockResolvedValue({
+  _sum: {
+    amountInPaise: 0,
+  },
+});
+
+prismaMock.refund.create.mockResolvedValue(
+  reservation,
+);
 
     prismaMock.paymentTransaction.update.mockResolvedValue(
       paymentTransaction,
