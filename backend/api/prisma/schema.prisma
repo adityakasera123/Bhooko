@@ -292,6 +292,7 @@ model Order {
   items              OrderItem[]
   paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id])
   settlement         Settlement?
+  refunds            Refund[]
 
   @@index([customerId])
   @@index([restaurantId])
@@ -348,6 +349,7 @@ model PaymentTransaction {
 model Refund {
   id                   String       @id @default(uuid())
   paymentTransactionId String
+  orderId              String?
   idempotencyKey       String
   razorpayRefundId     String?      @unique
   amountInPaise        Int
@@ -357,6 +359,7 @@ model Refund {
   updatedAt            DateTime     @updatedAt
 
   paymentTransaction    PaymentTransaction     @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  order                 Order?                 @relation(fields: [orderId], references: [id])
   reconciliationRecords ReconciliationRecord[]
 
   @@unique([paymentTransactionId, idempotencyKey])

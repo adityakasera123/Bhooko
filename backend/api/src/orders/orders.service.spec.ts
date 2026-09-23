@@ -479,6 +479,316 @@ describe('OrdersService', () => {
     });
   });
 
+  it('should allow restaurant owner to accept its own order', async () => {
+  orderStateMachineMock.assertTransitionAllowed.mockImplementation(
+    () => undefined,
+  );
+
+  prismaMock.order = {
+    findUnique: mockResolved({
+      id: 'order-6',
+      customerId: 'customer-1',
+      restaurantId: 'restaurant-1',
+      status: 'CREATED',
+    }),
+    update: mockResolved({
+      id: 'order-6',
+      customerId: 'customer-1',
+      restaurantId: 'restaurant-1',
+      status: 'CONFIRMED',
+    }),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-1',
+      ownerId: 'restaurant-owner-1',
+    }),
+  };
+
+  const result = await service.acceptOrder(
+    'restaurant-owner-1',
+    'order-6',
+  );
+
+  expect(
+    orderStateMachineMock.assertTransitionAllowed,
+  ).toHaveBeenCalledWith(
+    'CREATED',
+    'CONFIRMED',
+  );
+
+  expect(
+    prismaMock.order.update,
+  ).toHaveBeenCalledWith({
+    where: {
+      id: 'order-6',
+    },
+    data: {
+      status: 'CONFIRMED',
+    },
+  });
+
+  expect(result).toEqual({
+    id: 'order-6',
+    customerId: 'customer-1',
+    restaurantId: 'restaurant-1',
+    status: 'CONFIRMED',
+  });
+});
+
+it('should allow a restaurant owner to reject their own order', async () => {
+  prismaMock.order.findUnique.mockResolvedValue({
+    id: 'order-1',
+    restaurantId: 'restaurant-1',
+    status: 'CREATED',
+  });
+
+  prismaMock.restaurant.findUnique.mockResolvedValue({
+    id: 'restaurant-1',
+    ownerId: 'restaurant-owner-1',
+  });
+
+  prismaMock.order.update.mockResolvedValue({
+    id: 'order-1',
+    status: 'CANCELLED',
+  });
+
+  const result = await service.rejectOrder(
+    'restaurant-owner-1',
+    'order-1',
+  );
+
+  expect(prismaMock.order.update).toHaveBeenCalledWith({
+    where: {
+      id: 'order-1',
+    },
+    data: {
+      status: 'CANCELLED',
+    },
+  });
+
+  expect(result).toEqual({
+    id: 'order-1',
+    status: 'CANCELLED',
+  });
+});
+
+it('should reject when the order does not exist', async () => {
+  prismaMock.order.findUnique.mockResolvedValue(null);
+
+  await expect(
+    service.rejectOrder(
+      'restaurant-owner-1',
+      'order-1',
+    ),
+  ).rejects.toThrow('Order not found');
+});
+
+it('should reject when the restaurant owner does not own the order restaurant', async () => {
+  prismaMock.order.findUnique.mockResolvedValue({
+    id: 'order-1',
+    restaurantId: 'restaurant-1',
+    status: 'CREATED',
+  });
+
+  prismaMock.restaurant.findUnique.mockResolvedValue({
+    id: 'restaurant-1',
+    ownerId: 'restaurant-owner-2',
+  });
+
+  await expect(
+    service.rejectOrder(
+      'restaurant-owner-1',
+      'order-1',
+    ),
+  ).rejects.toThrow(
+    'You are not allowed to reject this restaurant order',
+  );
+});
+
+it('should reject when the order cannot transition to CANCELLED', async () => {
+  orderStateMachineMock.assertTransitionAllowed.mockImplementation(
+  () => {
+    throw new ForbiddenException(
+      'Order cannot move from DELIVERED to CANCELLED',
+    );
+  },
+);
+  prismaMock.order.findUnique.mockResolvedValue({
+    id: 'order-1',
+    restaurantId: 'restaurant-1',
+    status: 'DELIVERED',
+  });
+
+  prismaMock.restaurant.findUnique.mockResolvedValue({
+    id: 'restaurant-1',
+    ownerId: 'restaurant-owner-1',
+  });
+
+  await expect(
+    service.rejectOrder(
+      'restaurant-owner-1',
+      'order-1',
+    ),
+  ).rejects.toThrow(
+    'Order cannot move from DELIVERED to CANCELLED',
+  );
+
+  expect(
+    prismaMock.order.update,
+  ).not.toHaveBeenCalled();
+});
+
+it('should not allow a customer to reject an order', async () => {
+  prismaMock.order.findUnique.mockResolvedValue({
+    id: 'order-1',
+    restaurantId: 'restaurant-1',
+    status: 'CREATED',
+  });
+
+  prismaMock.restaurant.findUnique.mockResolvedValue({
+    id: 'restaurant-1',
+    ownerId: 'restaurant-owner-1',
+  });
+
+  await expect(
+    service.rejectOrder(
+      'customer-1',
+      'order-1',
+    ),
+  ).rejects.toThrow(
+    'You are not allowed to reject this restaurant order',
+  );
+
+  expect(
+    prismaMock.order.update,
+  ).not.toHaveBeenCalled();
+});
+
+
+it('should reject accepting a non-existent order', async () => {
+  prismaMock.order = {
+    findUnique: mockResolved(null),
+    update: jest.fn(),
+  };
+
+  await expect(
+    service.acceptOrder('restaurant-owner-1', 'order-6'),
+  ).rejects.toThrow('Order not found');
+
+  expect(
+    prismaMock.restaurant?.findUnique,
+  ).not.toHaveBeenCalled();
+
+  expect(
+    prismaMock.order.update,
+  ).not.toHaveBeenCalled();
+});
+
+it('should reject restaurant owner from accepting another restaurant order', async () => {
+  prismaMock.order = {
+    findUnique: mockResolved({
+      id: 'order-7',
+      customerId: 'customer-1',
+      restaurantId: 'restaurant-2',
+      status: 'CREATED',
+    }),
+    update: jest.fn(),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-2',
+      ownerId: 'restaurant-owner-2',
+    }),
+  };
+
+  await expect(
+    service.acceptOrder('restaurant-owner-1', 'order-7'),
+  ).rejects.toThrow(
+    'You are not allowed to accept this restaurant order',
+  );
+
+  expect(
+    orderStateMachineMock.assertTransitionAllowed,
+  ).not.toHaveBeenCalled();
+
+  expect(
+    prismaMock.order.update,
+  ).not.toHaveBeenCalled();
+});
+
+  it('should reject customer from accepting an order', async () => {
+  prismaMock.order = {
+    findUnique: mockResolved({
+      id: 'order-8',
+      customerId: 'customer-1',
+      restaurantId: 'restaurant-1',
+      status: 'CREATED',
+    }),
+    update: jest.fn(),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-1',
+      ownerId: 'restaurant-owner-1',
+    }),
+  };
+
+  await expect(
+    service.acceptOrder('customer-1', 'order-8'),
+  ).rejects.toThrow(
+    'You are not allowed to accept this restaurant order',
+  );
+
+  expect(
+    orderStateMachineMock.assertTransitionAllowed,
+  ).not.toHaveBeenCalled();
+
+  expect(
+    prismaMock.order.update,
+  ).not.toHaveBeenCalled();
+  });
+
+  it('should reject accepting an order with an invalid transition', async () => {
+  prismaMock.order = {
+    findUnique: mockResolved({
+      id: 'order-9',
+      customerId: 'customer-1',
+      restaurantId: 'restaurant-1',
+      status: 'CONFIRMED',
+    }),
+    update: jest.fn(),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-1',
+      ownerId: 'restaurant-owner-1',
+    }),
+  };
+
+  orderStateMachineMock.assertTransitionAllowed.mockImplementation(
+    () => {
+      throw new ForbiddenException(
+        'Order cannot move from CONFIRMED to CONFIRMED',
+      );
+    },
+  );
+
+  await expect(
+    service.acceptOrder('restaurant-owner-1', 'order-9'),
+  ).rejects.toThrow(
+    'Order cannot move from CONFIRMED to CONFIRMED',
+  );
+
+  expect(
+    prismaMock.order.update,
+  ).not.toHaveBeenCalled();
+  });
+
   it('should reject customer from updating order status', async () => {
     prismaMock.order = {
       findUnique: mockResolved({
@@ -651,7 +961,7 @@ describe('OrdersService', () => {
     ).not.toHaveBeenCalled();
   });
 
-    it('should reject customer from cancelling an order after preparation has started', async () => {
+  it('should reject customer from cancelling an order after preparation has started', async () => {
     orderStateMachineMock.assertTransitionAllowed.mockImplementation(
       () => {
         throw new ForbiddenException(

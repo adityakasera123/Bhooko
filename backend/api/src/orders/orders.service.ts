@@ -285,6 +285,82 @@ async updateOrderStatus(
   });
 }
 
+async acceptOrder(userId: string, orderId: string) {
+  const order = await this.prisma.order.findUnique({
+    where: {
+      id: orderId,
+    },
+  });
+
+  if (!order) {
+    throw new NotFoundException('Order not found');
+  }
+
+  const restaurant = await this.prisma.restaurant.findUnique({
+    where: {
+      id: order.restaurantId,
+    },
+  });
+
+  if (!restaurant || restaurant.ownerId !== userId) {
+    throw new ForbiddenException(
+      'You are not allowed to accept this restaurant order',
+    );
+  }
+
+  this.orderStateMachine.assertTransitionAllowed(
+    order.status,
+    'CONFIRMED',
+  );
+
+  return this.prisma.order.update({
+    where: {
+      id: orderId,
+    },
+    data: {
+      status: 'CONFIRMED',
+    },
+  });
+}
+
+async rejectOrder(userId: string, orderId: string) {
+  const order = await this.prisma.order.findUnique({
+    where: {
+      id: orderId,
+    },
+  });
+
+  if (!order) {
+    throw new NotFoundException('Order not found');
+  }
+
+  const restaurant = await this.prisma.restaurant.findUnique({
+    where: {
+      id: order.restaurantId,
+    },
+  });
+
+  if (!restaurant || restaurant.ownerId !== userId) {
+    throw new ForbiddenException(
+      'You are not allowed to reject this restaurant order',
+    );
+  }
+
+  this.orderStateMachine.assertTransitionAllowed(
+    order.status,
+    'CANCELLED',
+  );
+
+  return this.prisma.order.update({
+    where: {
+      id: orderId,
+    },
+    data: {
+      status: 'CANCELLED',
+    },
+  });
+}
+
 async cancelOrder(userId: string, orderId: string) {
   const order = await this.prisma.order.findFirst({
     where: {

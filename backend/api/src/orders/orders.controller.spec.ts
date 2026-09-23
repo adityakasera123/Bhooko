@@ -15,8 +15,9 @@ describe('OrdersController', () => {
        {
   provide: OrdersService,
   useValue: {
-    cancelOrder: jest.fn(),
-  },
+  cancelOrder: jest.fn(),
+  acceptOrder: jest.fn(),
+},
 },
       ],
     })
@@ -33,9 +34,9 @@ describe('OrdersController', () => {
     expect(controller).toBeDefined();
   });
 
-    it('should cancel an order for the authenticated customer', async () => {
+  it('should cancel an order for the authenticated customer', async () => {
     const ordersServiceMock =
-  controller['ordersService'] as any;``
+  controller['ordersService'] as any;
 
    const cancelOrderMock: any = jest.fn();
 
@@ -68,4 +69,77 @@ ordersServiceMock.cancelOrder = cancelOrderMock;
       status: 'CANCELLED',
     });
   });
+
+  it('should accept an order for the authenticated restaurant owner', async () => {
+  const ordersServiceMock =
+    controller['ordersService'] as any;
+
+  const acceptOrderMock: any = jest.fn();
+
+  acceptOrderMock.mockResolvedValue({
+    id: 'order-1',
+    status: 'CONFIRMED',
+  });
+
+  ordersServiceMock.acceptOrder = acceptOrderMock;
+
+  const user = {
+    userId: 'restaurant-owner-1',
+    role: 'RESTAURANT',
+  };
+
+  const result = await controller.acceptOrder(
+    user,
+    'order-1',
+  );
+
+  expect(
+    ordersServiceMock.acceptOrder,
+  ).toHaveBeenCalledWith(
+    'restaurant-owner-1',
+    'order-1',
+  );
+
+  expect(result).toEqual({
+    id: 'order-1',
+    status: 'CONFIRMED',
+  });
+  });
+
+  it('should reject an order for the authenticated restaurant owner', async () => {
+  const ordersServiceMock =
+    controller['ordersService'] as any;
+
+  const rejectOrderMock: any = jest.fn();
+
+  rejectOrderMock.mockResolvedValue({
+    id: 'order-1',
+    status: 'CANCELLED',
+  });
+
+  ordersServiceMock.rejectOrder = rejectOrderMock;
+
+  const user = {
+    userId: 'restaurant-owner-1',
+    role: 'RESTAURANT',
+  };
+
+  const result = await controller.rejectOrder(
+    user,
+    'order-1',
+  );
+
+  expect(
+    ordersServiceMock.rejectOrder,
+  ).toHaveBeenCalledWith(
+    'restaurant-owner-1',
+    'order-1',
+  );
+
+  expect(result).toEqual({
+    id: 'order-1',
+    status: 'CANCELLED',
+  });
+});
+
 });

@@ -58,6 +58,31 @@ async updateOrderStatus(
   );
 }
 
+
+@Post(':id/accept')
+@UseGuards(JwtAuthGuard)
+async acceptOrder(
+  @CurrentUser() user: CurrentUserPayload,
+  @Param('id') orderId: string,
+) {
+  return this.ordersService.acceptOrder(
+    user.userId,
+    orderId,
+  );
+}
+
+@Post(':id/reject')
+@UseGuards(JwtAuthGuard)
+async rejectOrder(
+  @CurrentUser() user: CurrentUserPayload,
+  @Param('id') orderId: string,
+) {
+  return this.ordersService.rejectOrder(
+    user.userId,
+    orderId,
+  );
+}
+
   @Post(':id/cancel')
   @UseGuards(JwtAuthGuard)
   async cancelOrder(
