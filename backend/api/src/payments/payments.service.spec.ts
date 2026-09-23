@@ -1495,6 +1495,225 @@ prismaMock.refund.create.mockResolvedValue(
       razorpayServiceMock.createRefund,
     ).toHaveBeenCalledTimes(1);
   });
+
+  it('should mark payment as PAID and confirm CREATED orders on payment.captured webhook', async () => {
+    const paymentTransaction = {
+      id: 'payment-1',
+      status: 'PENDING',
+      amountInPaise: 18000,
+      razorpayOrderId: 'order_test_123',
+      razorpayPaymentId: null,
+    };
+
+    const updatedPayment = {
+      ...paymentTransaction,
+      status: 'PAID',
+      razorpayPaymentId: 'pay_test_123',
+    };
+
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    prismaMock.paymentTransaction.update.mockResolvedValue(
+      updatedPayment,
+    );
+
+    prismaMock.order.updateMany.mockResolvedValue({
+      count: 1,
+    });
+
+    prismaMock.order.findMany.mockResolvedValue([]);
+
+    const result = await service.handleWebhook({
+      event: 'payment.captured',
+      payload: {
+        payment: {
+          entity: {
+            id: 'pay_test_123',
+            order_id: 'order_test_123',
+            amount: 18000,
+          },
+        },
+      },
+    });
+
+    expect(
+      prismaMock.paymentTransaction.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'payment-1',
+      },
+      data: {
+        status: 'PAID',
+        razorpayPaymentId: 'pay_test_123',
+      },
+    });
+
+    expect(
+      prismaMock.order.updateMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        paymentTransactionId: 'payment-1',
+        status: 'CREATED',
+      },
+      data: {
+        status: 'CONFIRMED',
+      },
+    });
+
+    expect(result).toEqual({
+      received: true,
+      processed: true,
+      event: 'payment.captured',
+      paymentTransactionId: 'payment-1',
+      razorpayPaymentId: 'pay_test_123',
+      status: 'PAID',
+    });
+  });
+
+    it('should reserve and execute refund for a restaurant-rejected order when payment is captured', async () => {
+    const paymentTransaction = {
+      id: 'payment-restaurant-rejected-1',
+      status: 'PENDING',
+      amountInPaise: 18000,
+      razorpayOrderId: 'order_restaurant_rejected_1',
+      razorpayPaymentId: null,
+    };
+
+    const updatedPayment = {
+      ...paymentTransaction,
+      status: 'PAID',
+      razorpayPaymentId: 'pay_restaurant_rejected_1',
+    };
+
+    const cancelledOrder = {
+      id: 'order-restaurant-rejected-1',
+      totalInPaise: 18000,
+    };
+
+    const refundReservation = {
+      id: 'refund-reservation-1',
+      paymentTransactionId: paymentTransaction.id,
+      orderId: cancelledOrder.id,
+      amountInPaise: 18000,
+      status: 'PENDING',
+      razorpayRefundId: null,
+      reason: 'Restaurant rejected order',
+      idempotencyKey:
+        `restaurant-rejection:${cancelledOrder.id}`,
+    };
+
+    const processedRefund = {
+      ...refundReservation,
+      razorpayRefundId: 'rfnd_restaurant_rejected_1',
+      status: 'PROCESSED',
+    };
+
+    prismaMock.paymentTransaction.findUnique.mockResolvedValue(
+      paymentTransaction,
+    );
+
+    prismaMock.paymentTransaction.update.mockResolvedValue(
+      updatedPayment,
+    );
+
+    prismaMock.order.updateMany.mockResolvedValue({
+      count: 0,
+    });
+
+    prismaMock.order.findMany.mockResolvedValue([
+      cancelledOrder,
+    ]);
+
+    prismaMock.refund.findUnique
+  .mockResolvedValueOnce(null)
+  .mockResolvedValue(refundReservation);
+
+   prismaMock.paymentTransaction.findUnique
+  .mockResolvedValueOnce(paymentTransaction)
+  .mockResolvedValue({
+    ...paymentTransaction,
+    status: 'PAID',
+    razorpayPaymentId: 'pay_restaurant_rejected_1',
+  });
+
+    prismaMock.refund.aggregate
+      .mockResolvedValue({
+        _sum: {
+          amountInPaise: 0,
+        },
+      });
+
+    prismaMock.refund.create.mockResolvedValue(
+      refundReservation,
+    );
+
+    prismaMock.refund.update.mockResolvedValue(
+      processedRefund,
+    );
+
+    prismaMock.paymentTransaction.update
+      .mockResolvedValueOnce(updatedPayment)
+      .mockResolvedValueOnce({
+        ...updatedPayment,
+        status: 'REFUND_PENDING',
+      });
+
+    razorpayServiceMock.createRefund.mockResolvedValue({
+  id: 'rfnd_restaurant_rejected_1',
+  amount: 18000,
+});
+
+    const result = await service.handleWebhook({
+      event: 'payment.captured',
+      payload: {
+        payment: {
+          entity: {
+            id: 'pay_restaurant_rejected_1',
+            order_id: 'order_restaurant_rejected_1',
+            amount: 18000,
+          },
+        },
+      },
+    });
+
+    expect(
+      prismaMock.order.findMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        paymentTransactionId:
+          paymentTransaction.id,
+        status: 'CANCELLED',
+        cancellationSource: 'RESTAURANT',
+      },
+      select: {
+        id: true,
+        totalInPaise: true,
+      },
+    });
+
+    expect(
+      prismaMock.refund.create,
+    ).toHaveBeenCalled();
+
+    expect(
+  razorpayServiceMock.createRefund,
+).toHaveBeenCalledWith(
+  'pay_restaurant_rejected_1',
+  18000,
+  'payment-restaurant-rejected-1',
+);
+
+    expect(result).toMatchObject({
+      received: true,
+      processed: true,
+      event: 'payment.captured',
+      paymentTransactionId:
+        paymentTransaction.id,
+    });
+  });
+
 });
 
 });

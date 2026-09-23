@@ -1102,33 +1102,58 @@ for (const refund of verificationResult.refundReservations) {
         };
       }
 
-      const updatedPayment =
-        await this.prisma.$transaction(async (tx) => {
-          const updated =
-            await tx.paymentTransaction.update({
-              where: {
-                id: paymentTransaction.id,
-              },
-              data: {
-                status: 'PAID',
-                razorpayPaymentId:
-                  razorpayPaymentId ??
-                  paymentTransaction.razorpayPaymentId,
-              },
-            });
+     const captureResult =
+  await this.prisma.$transaction(async (tx) => {
+    const updated =
+      await tx.paymentTransaction.update({
+        where: {
+          id: paymentTransaction.id,
+        },
+        data: {
+          status: 'PAID',
+          razorpayPaymentId:
+            razorpayPaymentId ??
+            paymentTransaction.razorpayPaymentId,
+        },
+      });
 
-          await tx.order.updateMany({
-            where: {
-              paymentTransactionId: paymentTransaction.id,
-              status: 'CREATED',
-            },
-            data: {
-              status: 'CONFIRMED',
-            },
-          });
+    await tx.order.updateMany({
+      where: {
+        paymentTransactionId: paymentTransaction.id,
+        status: 'CREATED',
+      },
+      data: {
+        status: 'CONFIRMED',
+      },
+    });
 
-          return updated;
-        });
+    const refundReservations =
+      await this.reserveCancelledOrderRefundsInTransaction(
+        tx,
+        paymentTransaction.id,
+      );
+
+    return {
+      updatedPayment: updated,
+      refundReservations,
+    };
+  });
+
+for (const refund of captureResult.refundReservations) {
+  await this.executeReservedRefund(refund.id);
+}
+
+const updatedPayment =
+  captureResult.updatedPayment;
+
+return {
+  received: true,
+  processed: true,
+  event,
+  paymentTransactionId: updatedPayment.id,
+  razorpayPaymentId: updatedPayment.razorpayPaymentId,
+  status: updatedPayment.status,
+};
 
       return {
         received: true,

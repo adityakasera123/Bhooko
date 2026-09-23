@@ -15,8 +15,9 @@ describe('PaymentsService Webhook', () => {
       update: jest.fn(),
     },
     order: {
-      updateMany: jest.fn(),
-    },
+  updateMany: jest.fn(),
+  findMany: jest.fn(),
+},
     refund: {
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -79,6 +80,7 @@ describe('PaymentsService Webhook', () => {
     prismaMock.order.updateMany.mockResolvedValue({
       count: 1,
     });
+    prismaMock.order.findMany.mockResolvedValue([]);
 
     const result = await service.handleWebhook({
       event: 'payment.captured',
