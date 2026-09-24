@@ -514,3 +514,193 @@ SETTLEMENT ADJUSTMENT
 ✅ Refunds can require restaurant settlement adjustment
 ✅ Exact settlement schedule remains configurable
 ✅ Exact refund percentages/rules will be defined during Refund Policy implementation
+
+
+BHOOKO 8 — DELIVERY 🚚
+│
+├── 8.1 — Delivery Architecture
+│   ├── Delivery domain boundaries
+│   ├── Delivery entity / Prisma model
+│   ├── Order ↔ Delivery relationship
+│   ├── Delivery ↔ Delivery Partner relationship
+│   ├── Delivery status / enums
+│   ├── Delivery lifecycle timestamps
+│   ├── Delivery address snapshot/reference
+│   ├── Delivery ownership model
+│   ├── Delivery module structure
+│   ├── Database constraints
+│   └── Idempotency / consistency rules
+│
+├── 8.2 — Delivery Partner / Rider
+│   ├── Delivery partner identity
+│   ├── Partner profile
+│   ├── Partner availability
+│   ├── ONLINE / OFFLINE
+│   ├── ACTIVE / INACTIVE
+│   ├── Current active delivery
+│   ├── Partner delivery history
+│   ├── Partner ↔ Delivery relationship
+│   └── Partner authorization foundation
+│
+├── 8.3 — Delivery Assignment
+│   ├── Assignment creation
+│   ├── Assign rider
+│   ├── Assignment validation
+│   ├── Rider availability check
+│   ├── Prevent duplicate assignment
+│   ├── Accept assignment
+│   ├── Reject assignment
+│   ├── Unassign
+│   ├── Reassign
+│   ├── Assignment timestamps
+│   └── Assignment idempotency
+│
+├── 8.4 — Delivery Lifecycle
+│   ├── Delivery state machine
+│   ├── CREATED
+│   ├── ASSIGNED
+│   ├── ACCEPTED
+│   ├── PICKED_UP
+│   ├── OUT_FOR_DELIVERY
+│   ├── DELIVERED
+│   ├── CANCELLED
+│   ├── FAILED
+│   ├── Valid transitions
+│   ├── Invalid transition protection
+│   └── Transition timestamps / audit data
+│
+├── 8.5 — Pickup Flow
+│   ├── Rider reaches restaurant
+│   ├── Pickup eligibility
+│   ├── Restaurant handoff readiness
+│   ├── Pickup confirmation
+│   ├── PICKED_UP transition
+│   ├── Pickup timestamp
+│   ├── Duplicate pickup protection
+│   └── Pickup failure handling
+│
+├── 8.6 — Out-for-Delivery
+│   ├── Pickup prerequisite
+│   ├── OUT_FOR_DELIVERY transition
+│   ├── Delivery start timestamp
+│   ├── Rider authorization
+│   ├── Customer visibility
+│   ├── Restaurant visibility
+│   ├── Status validation
+│   └── Invalid transition protection
+│
+├── 8.7 — Delivered
+│   ├── Delivery completion
+│   ├── DELIVERED transition
+│   ├── Delivery confirmation
+│   ├── Completion timestamp
+│   ├── Duplicate completion protection
+│   ├── Order → completed lifecycle integration
+│   ├── Settlement eligibility impact
+│   └── Post-delivery state protection
+│
+├── 8.8 — Delivery Cancellation / Failure
+│   ├── Cancellation rules
+│   ├── Failure rules
+│   ├── Cancellation reason
+│   ├── Failure reason
+│   ├── Customer unavailable
+│   ├── Restaurant issue
+│   ├── Rider issue
+│   ├── Delivery timeout / failed attempt
+│   ├── Reassignment after failure
+│   ├── Order lifecycle impact
+│   ├── Payment impact
+│   ├── Refund integration
+│   └── Settlement impact
+│
+├── 8.9 — Customer Delivery Tracking
+│   ├── Delivery status endpoint
+│   ├── Assigned rider information
+│   ├── Pickup status
+│   ├── OUT_FOR_DELIVERY status
+│   ├── Delivery completion status
+│   ├── Delivery timestamps
+│   ├── Tracking information
+│   ├── Customer ownership check
+│   └── Realtime tracking foundation
+│
+├── 8.10 — Restaurant → Delivery Handoff
+│   ├── Restaurant marks order READY
+│   ├── Delivery eligibility
+│   ├── Rider assignment
+│   ├── Rider acceptance
+│   ├── Restaurant handoff
+│   ├── Pickup confirmation
+│   ├── Handoff timestamp
+│   ├── Restaurant visibility
+│   └── Handoff failure handling
+│
+├── 8.11 — Delivery Authorization
+│   ├── Customer authorization
+│   ├── Restaurant authorization
+│   ├── Delivery partner authorization
+│   ├── Delivery ownership checks
+│   ├── Cross-user protection
+│   ├── Cross-restaurant protection
+│   ├── Assignment authorization
+│   ├── State-transition authorization
+│   └── Unauthorized operation protection
+│
+├── 8.12 — Delivery Realtime Events
+│   ├── Delivery created
+│   ├── Rider assigned
+│   ├── Assignment accepted
+│   ├── Assignment rejected
+│   ├── Pickup started/completed
+│   ├── OUT_FOR_DELIVERY
+│   ├── Delivery status updates
+│   ├── DELIVERED
+│   ├── CANCELLED
+│   ├── FAILED
+│   ├── Customer events
+│   ├── Restaurant events
+│   └── Rider events
+│
+├── 8.13 — Delivery Tests
+│   ├── Delivery model/service tests
+│   ├── State machine tests
+│   ├── Partner tests
+│   ├── Availability tests
+│   ├── Assignment tests
+│   ├── Accept/reject tests
+│   ├── Reassignment tests
+│   ├── Pickup tests
+│   ├── OUT_FOR_DELIVERY tests
+│   ├── Delivered tests
+│   ├── Cancellation tests
+│   ├── Failure tests
+│   ├── Authorization/security tests
+│   ├── Refund integration tests
+│   ├── Settlement integration tests
+│   ├── Realtime event tests
+│   └── Edge-case / idempotency tests
+│
+└── 8.14 — Integration / E2E Verification
+    ├── Order READY
+    ├── Delivery creation
+    ├── Rider assignment
+    ├── Rider acceptance
+    ├── Restaurant → rider handoff
+    ├── Pickup
+    ├── PICKED_UP
+    ├── OUT_FOR_DELIVERY
+    ├── Customer tracking
+    ├── DELIVERED
+    ├── Order completion
+    ├── Settlement eligibility
+    ├── Cancellation scenario
+    ├── Failed delivery scenario
+    ├── Reassignment scenario
+    ├── Refund scenario
+    ├── Authorization/security scenario
+    ├── Realtime event verification
+    ├── Full API flow
+    ├── Full Jest suite
+    ├── Production build
+    └── Git checkpoint
