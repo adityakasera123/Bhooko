@@ -14,6 +14,11 @@ import {
   UpdateOrderStatus,
   UpdateOrderStatusDto,
 } from './dto/update-order-status.dto';
+
+import {
+  RestaurantOrderQueryDto,
+  RestaurantOrderView,
+} from './dto/restaurant-order-query.dto';
 import { OrderStateMachineService } from './order-state-machine.service';
 
 describe('OrdersService', () => {
@@ -430,6 +435,290 @@ describe('OrdersService', () => {
     },
   );
 
+  it('should return orders belonging to restaurants owned by the restaurant user', async () => {
+    const orders = [
+      {
+        id: 'order-1',
+        restaurantId: 'restaurant-1',
+        status: 'CREATED',
+      },
+      {
+        id: 'order-2',
+        restaurantId: 'restaurant-2',
+        status: 'PREPARING',
+      },
+    ];
+
+    prismaMock.restaurant = {
+      findMany: mockResolved([
+        { id: 'restaurant-1' },
+        { id: 'restaurant-2' },
+      ]),
+    };
+
+    prismaMock.order = {
+      findMany: mockResolved(orders),
+    };
+
+    const result = await service.getRestaurantOrders(
+      'restaurant-owner-1',
+      {} as RestaurantOrderQueryDto,
+    );
+
+    expect(prismaMock.restaurant.findMany).toHaveBeenCalledWith({
+      where: {
+        ownerId: 'restaurant-owner-1',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    expect(prismaMock.order.findMany).toHaveBeenCalledWith({
+      where: {
+        restaurantId: {
+          in: ['restaurant-1', 'restaurant-2'],
+        },
+      },
+      include: {
+        items: true,
+        paymentTransaction: {
+          select: {
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    expect(result).toEqual(orders);
+  });
+
+    it('should return a restaurant order with items and payment status', async () => {
+    const order = {
+      id: 'order-1',
+      restaurantId: 'restaurant-1',
+      customerId: 'customer-1',
+      status: 'PREPARING',
+      items: [
+        {
+          id: 'item-1',
+          foodItemName: 'Chicken Biryani',
+          quantity: 2,
+        },
+      ],
+      paymentTransaction: {
+        status: 'PAID',
+      },
+    };
+
+    prismaMock.order = {
+      findUnique: mockResolved(order),
+    };
+
+    prismaMock.restaurant = {
+      findUnique: mockResolved({
+        id: 'restaurant-1',
+        ownerId: 'restaurant-owner-1',
+      }),
+    };
+
+    const result =
+      await service.getRestaurantOrderById(
+        'restaurant-owner-1',
+        'order-1',
+      );
+
+    expect(
+      prismaMock.order.findUnique,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'order-1',
+      },
+      include: {
+        items: true,
+        paymentTransaction: {
+          select: {
+            status: true,
+          },
+        },
+      },
+    });
+
+    expect(
+      prismaMock.restaurant.findUnique,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'restaurant-1',
+      },
+      select: {
+        id: true,
+        ownerId: true,
+      },
+    });
+
+    expect(result).toEqual(order);
+  });
+
+  it('should reject a restaurant owner from viewing another restaurant order', async () => {
+    const order = {
+      id: 'order-1',
+      restaurantId: 'restaurant-1',
+      customerId: 'customer-1',
+      status: 'PREPARING',
+      items: [],
+      paymentTransaction: {
+        status: 'PAID',
+      },
+    };
+
+    prismaMock.order = {
+      findUnique: mockResolved(order),
+    };
+
+    prismaMock.restaurant = {
+      findUnique: mockResolved({
+        id: 'restaurant-1',
+        ownerId: 'different-owner-1',
+      }),
+    };
+
+    await expect(
+      service.getRestaurantOrderById(
+        'restaurant-owner-1',
+        'order-1',
+      ),
+    ).rejects.toThrow(
+      'You are not allowed to view this restaurant order',
+    );
+  });
+
+  it('should return only active restaurant orders', async () => {
+    const orders = [
+      {
+        id: 'order-1',
+        restaurantId: 'restaurant-1',
+        status: 'CONFIRMED',
+      },
+    ];
+
+    prismaMock.restaurant = {
+      findMany: mockResolved([
+        { id: 'restaurant-1' },
+      ]),
+    };
+
+    prismaMock.order = {
+      findMany: mockResolved(orders),
+    };
+
+    const result = await service.getRestaurantOrders(
+      'restaurant-owner-1',
+      {
+        view: RestaurantOrderView.ACTIVE,
+      } as RestaurantOrderQueryDto,
+    );
+
+    expect(prismaMock.order.findMany).toHaveBeenCalledWith({
+      where: {
+        restaurantId: {
+          in: ['restaurant-1'],
+        },
+        status: {
+          in: [
+            'CREATED',
+            'CONFIRMED',
+            'PREPARING',
+            'READY',
+            'OUT_FOR_DELIVERY',
+          ],
+        },
+      },
+      include: {
+        items: true,
+        paymentTransaction: {
+          select: {
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    expect(result).toEqual(orders);
+  });
+
+  it('should filter restaurant orders by a specific status', async () => {
+    const orders = [
+      {
+        id: 'order-1',
+        restaurantId: 'restaurant-1',
+        status: 'PREPARING',
+      },
+    ];
+
+    prismaMock.restaurant = {
+      findMany: mockResolved([
+        { id: 'restaurant-1' },
+      ]),
+    };
+
+    prismaMock.order = {
+      findMany: mockResolved(orders),
+    };
+
+    const result = await service.getRestaurantOrders(
+      'restaurant-owner-1',
+      {
+        status: 'PREPARING',
+      } as RestaurantOrderQueryDto,
+    );
+
+    expect(prismaMock.order.findMany).toHaveBeenCalledWith({
+      where: {
+        restaurantId: {
+          in: ['restaurant-1'],
+        },
+        status: 'PREPARING',
+      },
+      include: {
+        items: true,
+        paymentTransaction: {
+          select: {
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    expect(result).toEqual(orders);
+  });
+
+  it('should return an empty list when the restaurant user owns no restaurants', async () => {
+    prismaMock.restaurant = {
+      findMany: mockResolved([]),
+    };
+
+    prismaMock.order = {
+      findMany: mockResolved([]),
+    };
+
+    const result = await service.getRestaurantOrders(
+      'restaurant-owner-1',
+      {} as RestaurantOrderQueryDto,
+    );
+
+    expect(result).toEqual([]);
+    expect(prismaMock.order.findMany).not.toHaveBeenCalled();
+  });
+
   it('should allow restaurant owner to update its order status', async () => {
     const order = {
       id: 'order-1',
@@ -489,6 +778,141 @@ describe('OrdersService', () => {
     });
   });
 
+  it('should allow restaurant owner to move an order from CONFIRMED to PREPARING', async () => {
+  const order = {
+    id: 'order-1',
+    customerId: 'customer-1',
+    restaurantId: 'restaurant-1',
+    status: 'CONFIRMED',
+  };
+
+  prismaMock.order = {
+    findUnique: mockResolved(order),
+    update: mockResolved({
+      ...order,
+      status: 'PREPARING',
+    }),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-1',
+      ownerId: 'restaurant-owner-1',
+    }),
+  };
+
+  await service.updateOrderStatus(
+    'restaurant-owner-1',
+    'RESTAURANT',
+    'order-1',
+    {
+      status: UpdateOrderStatus.PREPARING,
+    } satisfies UpdateOrderStatusDto,
+  );
+
+  expect(
+    orderStateMachineMock.assertTransitionAllowed,
+  ).toHaveBeenCalledWith(
+    'CONFIRMED',
+    UpdateOrderStatus.PREPARING,
+  );
+
+  expect(
+    prismaMock.order.update,
+  ).toHaveBeenCalledWith({
+    where: {
+      id: 'order-1',
+    },
+    data: {
+      status: UpdateOrderStatus.PREPARING,
+    },
+  });
+});
+
+it('should allow restaurant owner to move an order from PREPARING to READY', async () => {
+  const order = {
+    id: 'order-1',
+    customerId: 'customer-1',
+    restaurantId: 'restaurant-1',
+    status: 'PREPARING',
+  };
+
+  prismaMock.order = {
+    findUnique: mockResolved(order),
+    update: mockResolved({
+      ...order,
+      status: 'READY',
+    }),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-1',
+      ownerId: 'restaurant-owner-1',
+    }),
+  };
+
+  await service.updateOrderStatus(
+    'restaurant-owner-1',
+    'RESTAURANT',
+    'order-1',
+    {
+      status: UpdateOrderStatus.READY,
+    } satisfies UpdateOrderStatusDto,
+  );
+
+  expect(
+    orderStateMachineMock.assertTransitionAllowed,
+  ).toHaveBeenCalledWith(
+    'PREPARING',
+    UpdateOrderStatus.READY,
+  );
+
+  expect(
+    prismaMock.order.update,
+  ).toHaveBeenCalledWith({
+    where: {
+      id: 'order-1',
+    },
+    data: {
+      status: UpdateOrderStatus.READY,
+    },
+  });
+});
+
+it('should not allow restaurant owner to cancel an order through the generic status endpoint', async () => {
+  const order = {
+    id: 'order-1',
+    customerId: 'customer-1',
+    restaurantId: 'restaurant-1',
+    status: 'CONFIRMED',
+  };
+
+  prismaMock.order = {
+    findUnique: mockResolved(order),
+  };
+
+  prismaMock.restaurant = {
+    findUnique: mockResolved({
+      id: 'restaurant-1',
+      ownerId: 'restaurant-owner-1',
+    }),
+  };
+
+  await expect(
+    service.updateOrderStatus(
+      'restaurant-owner-1',
+      'RESTAURANT',
+      'order-1',
+      {
+        status: UpdateOrderStatus.CANCELLED,
+      } satisfies UpdateOrderStatusDto,
+    ),
+  ).rejects.toThrow(
+    'Restaurant cannot move order to CANCELLED',
+  );
+});
+ 
   it('should allow restaurant owner to accept its own order', async () => {
   orderStateMachineMock.assertTransitionAllowed.mockImplementation(
     () => undefined,
@@ -545,7 +969,7 @@ describe('OrdersService', () => {
     restaurantId: 'restaurant-1',
     status: 'CONFIRMED',
   });
-});
+  });
 
   it('should reject a restaurant order without immediate refund when payment is not captured', async () => {
     const tx: any = {

@@ -6,8 +6,13 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { OrderStatus } from '@prisma/client';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import {
+  RestaurantOrderQueryDto,
+  RestaurantOrderView,
+} from './dto/restaurant-order-query.dto';
 import { PricingService } from '../pricing/pricing.service';
 import { OrderStateMachineService } from './order-state-machine.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -238,6 +243,120 @@ async getOrderById(userId: string, orderId: string) {
   return order;
 }
 
+async getRestaurantOrders(
+  userId: string,
+  dto: RestaurantOrderQueryDto,
+) {
+  const restaurants =
+    await this.prisma.restaurant.findMany({
+      where: {
+        ownerId: userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+  const restaurantIds = restaurants.map(
+    (restaurant) => restaurant.id,
+  );
+
+  if (restaurantIds.length === 0) {
+    return [];
+  }
+
+  const where: {
+    restaurantId: { in: string[] };
+    status?: OrderStatus | { in: OrderStatus[] };
+  } = {
+    restaurantId: {
+      in: restaurantIds,
+    },
+  };
+
+  if (dto.status) {
+    where.status = dto.status;
+  } else if (
+    dto.view === RestaurantOrderView.ACTIVE
+  ) {
+    where.status = {
+      in: [
+        OrderStatus.CREATED,
+        OrderStatus.CONFIRMED,
+        OrderStatus.PREPARING,
+        OrderStatus.READY,
+        OrderStatus.OUT_FOR_DELIVERY,
+      ],
+    };
+  } else if (
+    dto.view === RestaurantOrderView.COMPLETED
+  ) {
+    where.status = {
+      in: [
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED,
+      ],
+    };
+  }
+
+  return this.prisma.order.findMany({
+    where,
+    include: {
+      items: true,
+      paymentTransaction: {
+        select: {
+          status: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+}
+
+async getRestaurantOrderById(
+  userId: string,
+  orderId: string,
+) {
+  const order = await this.prisma.order.findUnique({
+    where: {
+      id: orderId,
+    },
+    include: {
+      items: true,
+      paymentTransaction: {
+        select: {
+          status: true,
+        },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new NotFoundException('Order not found');
+  }
+
+  const restaurant =
+    await this.prisma.restaurant.findUnique({
+      where: {
+        id: order.restaurantId,
+      },
+      select: {
+        id: true,
+        ownerId: true,
+      },
+    });
+
+  if (!restaurant || restaurant.ownerId !== userId) {
+    throw new ForbiddenException(
+      'You are not allowed to view this restaurant order',
+    );
+  }
+
+  return order;
+}
+
 async updateOrderStatus(
   userId: string,
   role: string,
@@ -268,6 +387,19 @@ async updateOrderStatus(
         'You are not allowed to update this restaurant order',
       );
     }
+
+    const restaurantAllowedNextStatuses = [
+  'CONFIRMED',
+  'PREPARING',
+  'READY',
+];
+
+if (!restaurantAllowedNextStatuses.includes(dto.status)) {
+  throw new ForbiddenException(
+    `Restaurant cannot move order to ${dto.status}`,
+  );
+}
+
   } else {
     throw new ForbiddenException(
       'You are not allowed to update order status',

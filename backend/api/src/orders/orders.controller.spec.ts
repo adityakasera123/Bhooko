@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RestaurantOrderView } from './dto/restaurant-order-query.dto';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
@@ -17,6 +18,9 @@ describe('OrdersController', () => {
   useValue: {
   cancelOrder: jest.fn(),
   acceptOrder: jest.fn(),
+  rejectOrder: jest.fn(),
+  getRestaurantOrders: jest.fn(),
+  getRestaurantOrderById: jest.fn(),
 },
 },
       ],
@@ -140,6 +144,104 @@ ordersServiceMock.cancelOrder = cancelOrderMock;
     id: 'order-1',
     status: 'CANCELLED',
   });
-});
+  });
 
+    it('should get restaurant orders for the authenticated restaurant owner', async () => {
+    const ordersServiceMock =
+      controller['ordersService'] as any;
+
+    const getRestaurantOrdersMock: any = jest.fn();
+
+    getRestaurantOrdersMock.mockResolvedValue([
+      {
+        id: 'order-1',
+        restaurantId: 'restaurant-1',
+        status: 'CREATED',
+      },
+      {
+        id: 'order-2',
+        restaurantId: 'restaurant-1',
+        status: 'PREPARING',
+      },
+    ]);
+
+    ordersServiceMock.getRestaurantOrders =
+      getRestaurantOrdersMock;
+
+    const user = {
+      userId: 'restaurant-owner-1',
+      role: 'RESTAURANT',
+    };
+
+    const query = {
+  view: RestaurantOrderView.ACTIVE,
+};
+
+    const result =
+      await controller.getRestaurantOrders(
+        user,
+        query,
+      );
+
+    expect(
+      getRestaurantOrdersMock,
+    ).toHaveBeenCalledWith(
+      'restaurant-owner-1',
+      query,
+    );
+
+    expect(result).toEqual([
+      {
+        id: 'order-1',
+        restaurantId: 'restaurant-1',
+        status: 'CREATED',
+      },
+      {
+        id: 'order-2',
+        restaurantId: 'restaurant-1',
+        status: 'PREPARING',
+      },
+    ]);
+  });
+
+  it('should get a restaurant order by id for the authenticated restaurant owner', async () => {
+    const ordersServiceMock =
+      controller['ordersService'] as any;
+
+    const getRestaurantOrderByIdMock: any =
+      jest.fn();
+
+    getRestaurantOrderByIdMock.mockResolvedValue({
+      id: 'order-1',
+      restaurantId: 'restaurant-1',
+      status: 'PREPARING',
+    });
+
+    ordersServiceMock.getRestaurantOrderById =
+      getRestaurantOrderByIdMock;
+
+    const user = {
+      userId: 'restaurant-owner-1',
+      role: 'RESTAURANT',
+    };
+
+    const result =
+      await controller.getRestaurantOrderById(
+        user,
+        'order-1',
+      );
+
+    expect(
+      getRestaurantOrderByIdMock,
+    ).toHaveBeenCalledWith(
+      'restaurant-owner-1',
+      'order-1',
+    );
+
+    expect(result).toEqual({
+      id: 'order-1',
+      restaurantId: 'restaurant-1',
+      status: 'PREPARING',
+    });
+  });
 });

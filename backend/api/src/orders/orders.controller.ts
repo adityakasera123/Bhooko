@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -13,6 +14,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { RestaurantOrderQueryDto } from './dto/restaurant-order-query.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -32,6 +34,30 @@ export class OrdersController {
 @UseGuards(JwtAuthGuard)
 async getMyOrders(@CurrentUser() user: CurrentUserPayload) {
   return this.ordersService.getMyOrders(user.userId);
+}
+
+@Get('restaurant')
+@UseGuards(JwtAuthGuard)
+async getRestaurantOrders(
+  @CurrentUser() user: CurrentUserPayload,
+  @Query() dto: RestaurantOrderQueryDto,
+) {
+  return this.ordersService.getRestaurantOrders(
+    user.userId,
+    dto,
+  );
+}
+
+@Get('restaurant/:id')
+@UseGuards(JwtAuthGuard)
+async getRestaurantOrderById(
+  @CurrentUser() user: CurrentUserPayload,
+  @Param('id') orderId: string,
+) {
+  return this.ordersService.getRestaurantOrderById(
+    user.userId,
+    orderId,
+  );
 }
 
 @Get(':id')
