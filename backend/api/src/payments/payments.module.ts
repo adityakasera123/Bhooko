@@ -11,6 +11,7 @@ import { ReconciliationResolutionService } from './reconciliation/reconciliation
 
 import { ReconciliationRunService } from './reconciliation/reconciliation-run.service';
 import { ReconciliationMatcher } from './reconciliation/reconciliation-matcher.service';
+import { RefundReconciliationService } from './reconciliation/refund-reconciliation.service';
 
 
 @Module({
@@ -21,8 +22,10 @@ import { ReconciliationMatcher } from './reconciliation/reconciliation-matcher.s
   RazorpayService,
   RazorpayReconciliationProvider,
   ReconciliationMatcher,
+  ReconciliationResolver,
   ReconciliationResolutionService,
   ReconciliationRunService,
+  RefundReconciliationService,
 ],
 
   controllers: [PaymentsController],
