@@ -111,6 +111,56 @@ enum SettlementStatus {
   FAILED
 }
 
+// ============================================================
+// DELIVERY ENUMS
+// ============================================================
+
+enum RiderStatus {
+  REGISTERED
+  ACTIVE
+  INACTIVE
+}
+
+enum RiderAvailability {
+  OFFLINE
+  ONLINE
+  AVAILABLE
+  ASSIGNED
+  ON_DELIVERY
+}
+
+enum DeliveryStatus {
+  CREATED
+  ASSIGNED
+  RIDER_ACCEPTED
+  ARRIVED_AT_RESTAURANT
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum DeliveryAssignmentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum DeliveryEventType {
+  CREATED
+  ASSIGNED
+  ACCEPTED
+  REJECTED
+  ARRIVED
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -127,6 +177,9 @@ model User {
   cart                Cart?
   orders              Order[]
   paymentTransactions PaymentTransaction[]
+
+  // DELIVERY
+  rider Rider?
 }
 
 model RefreshToken {
@@ -302,6 +355,9 @@ model Order {
   settlement         Settlement?
   refunds            Refund[]
 
+  // DELIVERY
+  delivery Delivery?
+
   @@index([customerId])
   @@index([restaurantId])
   @@index([status])
@@ -474,4 +530,86 @@ model ReconciliationRecord {
   @@index([resolutionStatus])
   @@index([mismatchType])
   @@index([createdAt])
+}
+
+// ============================================================
+// DELIVERY MODELS
+// ============================================================
+
+model Rider {
+  id            String            @id @default(uuid())
+  userId        String            @unique
+  status        RiderStatus       @default(REGISTERED)
+  availability  RiderAvailability @default(OFFLINE)
+  vehicleType   String?
+  vehicleNumber String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user        User                 @relation(fields: [userId], references: [id])
+  deliveries  Delivery[]
+  assignments DeliveryAssignment[]
+
+  @@index([status])
+  @@index([availability])
+}
+
+model Delivery {
+  id      String         @id @default(uuid())
+  orderId String         @unique
+  riderId String?
+  status  DeliveryStatus @default(CREATED)
+
+  pickupAt         DateTime?
+  outForDeliveryAt DateTime?
+  deliveredAt      DateTime?
+  failedAt         DateTime?
+  cancelledAt      DateTime?
+
+  failureReason      String?
+  cancellationReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order  @relation(fields: [orderId], references: [id])
+  rider Rider? @relation(fields: [riderId], references: [id])
+
+  assignments DeliveryAssignment[]
+  events      DeliveryEvent[]
+
+  @@index([riderId])
+  @@index([status])
+}
+
+model DeliveryAssignment {
+  id         String                   @id @default(uuid())
+  deliveryId String
+  riderId    String
+  status     DeliveryAssignmentStatus @default(PENDING)
+
+  assignedAt DateTime  @default(now())
+  acceptedAt DateTime?
+  rejectedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  rider    Rider    @relation(fields: [riderId], references: [id])
+
+  @@index([deliveryId])
+  @@index([riderId])
+  @@index([status])
+}
+
+model DeliveryEvent {
+  id         String            @id @default(uuid())
+  deliveryId String
+  type       DeliveryEventType
+  metadata   Json?
+  createdAt  DateTime          @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+
+  @@index([deliveryId])
+  @@index([type])
 }
