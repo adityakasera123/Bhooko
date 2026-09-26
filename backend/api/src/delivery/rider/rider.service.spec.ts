@@ -7,26 +7,34 @@ import {
 } from '@jest/globals';
 
 import { ConflictException, NotFoundException } from '@nestjs/common';
+
 import {
   RiderAvailability,
   RiderStatus,
   UserRole,
 } from '@prisma/client';
+
 import { RiderService } from './rider.service';
 
 describe('RiderService', () => {
   let service: RiderService;
 
-const prismaMock = {
-  user: {
-    findUnique: jest.fn<(...args: any[]) => Promise<any>>(),
-  },
-  rider: {
-    create: jest.fn<(...args: any[]) => Promise<any>>(),
-    findUnique: jest.fn<(...args: any[]) => Promise<any>>(),
-    update: jest.fn<(...args: any[]) => Promise<any>>(),
-  },
-};
+  const prismaMock = {
+    user: {
+      findUnique: jest.fn<(...args: any[]) => Promise<any>>(),
+    },
+
+    rider: {
+      create: jest.fn<(...args: any[]) => Promise<any>>(),
+      findUnique: jest.fn<(...args: any[]) => Promise<any>>(),
+      update: jest.fn<(...args: any[]) => Promise<any>>(),
+    },
+
+    delivery: {
+      findFirst: jest.fn<(...args: any[]) => Promise<any>>(),
+      findMany: jest.fn<(...args: any[]) => Promise<any>>(),
+    },
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -148,6 +156,7 @@ const prismaMock = {
       const result = await service.getRiderByUserId('user-1');
 
       expect(prismaMock.rider.findUnique).toHaveBeenCalled();
+
       expect(result).toEqual(rider);
     });
 
@@ -246,6 +255,7 @@ const prismaMock = {
     it('should return the rider without updating when already active', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.OFFLINE,
       };
@@ -255,6 +265,7 @@ const prismaMock = {
       const result = await service.activateRider('rider-1');
 
       expect(result).toEqual(rider);
+
       expect(prismaMock.rider.update).not.toHaveBeenCalled();
     });
   });
@@ -263,6 +274,7 @@ const prismaMock = {
     it('should deactivate an offline rider', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.OFFLINE,
       };
@@ -278,12 +290,14 @@ const prismaMock = {
       const result = await service.deactivateRider('rider-1');
 
       expect(prismaMock.rider.update).toHaveBeenCalled();
+
       expect(result.status).toBe(RiderStatus.INACTIVE);
     });
 
     it('should reject deactivation while rider is not offline', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.ONLINE,
       };
@@ -300,6 +314,7 @@ const prismaMock = {
     it('should return the rider when already inactive', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.INACTIVE,
         availability: RiderAvailability.OFFLINE,
       };
@@ -309,6 +324,7 @@ const prismaMock = {
       const result = await service.deactivateRider('rider-1');
 
       expect(result).toEqual(rider);
+
       expect(prismaMock.rider.update).not.toHaveBeenCalled();
     });
   });
@@ -317,6 +333,7 @@ const prismaMock = {
     it('should allow an active rider to go online', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.OFFLINE,
       };
@@ -342,12 +359,15 @@ const prismaMock = {
         },
       });
 
-      expect(result.availability).toBe(RiderAvailability.ONLINE);
+      expect(result.availability).toBe(
+        RiderAvailability.ONLINE,
+      );
     });
 
     it('should reject availability changes for inactive riders', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.INACTIVE,
         availability: RiderAvailability.OFFLINE,
       };
@@ -367,6 +387,7 @@ const prismaMock = {
     it('should allow an active rider to go offline', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.ONLINE,
       };
@@ -383,12 +404,15 @@ const prismaMock = {
         RiderAvailability.OFFLINE,
       );
 
-      expect(result.availability).toBe(RiderAvailability.OFFLINE);
+      expect(result.availability).toBe(
+        RiderAvailability.OFFLINE,
+      );
     });
 
     it('should reject going offline during an assigned delivery', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.ASSIGNED,
       };
@@ -408,6 +432,7 @@ const prismaMock = {
     it('should reject going offline during an active delivery', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.ON_DELIVERY,
       };
@@ -429,6 +454,7 @@ const prismaMock = {
     it('should update rider vehicle information', async () => {
       const rider = {
         id: 'rider-1',
+        userId: 'user-1',
         status: RiderStatus.ACTIVE,
         availability: RiderAvailability.OFFLINE,
       };
@@ -458,6 +484,7 @@ const prismaMock = {
       });
 
       expect(result.vehicleType).toBe('SCOOTER');
+
       expect(result.vehicleNumber).toBe('UP65XY9999');
     });
 
@@ -473,6 +500,188 @@ const prismaMock = {
       ).rejects.toThrow(NotFoundException);
 
       expect(prismaMock.rider.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCurrentDelivery', () => {
+    it('should return the rider current active delivery', async () => {
+      const riderId = 'rider-1';
+
+      prismaMock.rider.findUnique.mockResolvedValue({
+        id: riderId,
+        userId: 'user-1',
+        status: RiderStatus.ACTIVE,
+        availability: RiderAvailability.ON_DELIVERY,
+        vehicleType: 'BIKE',
+        vehicleNumber: 'UP32AB1234',
+      });
+
+      const delivery = {
+        id: 'delivery-1',
+        riderId,
+        orderId: 'order-1',
+        status: 'OUT_FOR_DELIVERY',
+      };
+
+      prismaMock.delivery.findFirst.mockResolvedValue(
+        delivery,
+      );
+
+      const result = await service.getCurrentDelivery(riderId);
+
+      expect(result).toEqual(delivery);
+
+      expect(prismaMock.delivery.findFirst).toHaveBeenCalledWith({
+        where: {
+          riderId,
+          status: {
+            notIn: [
+              'DELIVERED',
+              'FAILED',
+              'CANCELLED',
+            ],
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+    });
+
+    it('should return null when the rider has no current delivery', async () => {
+      const riderId = 'rider-1';
+
+      prismaMock.rider.findUnique.mockResolvedValue({
+        id: riderId,
+        userId: 'user-1',
+        status: RiderStatus.ACTIVE,
+        availability: RiderAvailability.ONLINE,
+        vehicleType: 'BIKE',
+        vehicleNumber: 'UP32AB1234',
+      });
+
+      prismaMock.delivery.findFirst.mockResolvedValue(null);
+
+      const result = await service.getCurrentDelivery(riderId);
+
+      expect(result).toBeNull();
+    });
+
+    it('should throw when the rider does not exist', async () => {
+      const riderId = 'missing-rider';
+
+      prismaMock.rider.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getCurrentDelivery(riderId),
+      ).rejects.toThrow('Rider not found');
+
+      expect(
+        prismaMock.delivery.findFirst,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDeliveryHistory', () => {
+    it('should return rider delivery history', async () => {
+      const riderId = 'rider-1';
+
+      prismaMock.rider.findUnique.mockResolvedValue({
+        id: riderId,
+        userId: 'user-1',
+        status: RiderStatus.ACTIVE,
+        availability: RiderAvailability.ONLINE,
+        vehicleType: 'BIKE',
+        vehicleNumber: 'UP32AB1234',
+      });
+
+      const deliveries = [
+        {
+          id: 'delivery-2',
+          riderId,
+          orderId: 'order-2',
+          status: 'DELIVERED',
+        },
+        {
+          id: 'delivery-3',
+          riderId,
+          orderId: 'order-3',
+          status: 'FAILED',
+        },
+      ];
+
+      prismaMock.delivery.findMany.mockResolvedValue(
+        deliveries,
+      );
+
+      const result = await service.getDeliveryHistory(riderId);
+
+      expect(result).toEqual(deliveries);
+
+      expect(prismaMock.delivery.findMany).toHaveBeenCalledWith({
+        where: {
+          riderId,
+          status: {
+            in: [
+              'DELIVERED',
+              'FAILED',
+              'CANCELLED',
+            ],
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          order: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+    });
+
+    it('should return an empty array when the rider has no delivery history', async () => {
+      const riderId = 'rider-1';
+
+      prismaMock.rider.findUnique.mockResolvedValue({
+        id: riderId,
+        userId: 'user-1',
+        status: RiderStatus.ACTIVE,
+        availability: RiderAvailability.OFFLINE,
+        vehicleType: 'BIKE',
+        vehicleNumber: 'UP32AB1234',
+      });
+
+      prismaMock.delivery.findMany.mockResolvedValue([]);
+
+      const result = await service.getDeliveryHistory(riderId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should throw when the rider does not exist', async () => {
+      const riderId = 'missing-rider';
+
+      prismaMock.rider.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getDeliveryHistory(riderId),
+      ).rejects.toThrow('Rider not found');
+
+      expect(
+        prismaMock.delivery.findMany,
+      ).not.toHaveBeenCalled();
     });
   });
 });

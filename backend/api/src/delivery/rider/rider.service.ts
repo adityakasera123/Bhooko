@@ -228,4 +228,62 @@ export class RiderService {
       },
     });
   }
+
+    async getCurrentDelivery(riderId: string) {
+    await this.getRiderById(riderId);
+
+    return this.prisma.delivery.findFirst({
+      where: {
+        riderId,
+        status: {
+          notIn: [
+            'DELIVERED',
+            'FAILED',
+            'CANCELLED',
+          ],
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        order: {
+          select: {
+            id: true,
+            status: true,
+         
+          },
+        },
+      },
+    });
+  }
+
+  async getDeliveryHistory(riderId: string) {
+    await this.getRiderById(riderId);
+
+    return this.prisma.delivery.findMany({
+      where: {
+        riderId,
+        status: {
+          in: [
+            'DELIVERED',
+            'FAILED',
+            'CANCELLED',
+          ],
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        order: {
+          select: {
+            id: true,
+            status: true,
+           
+          },
+        },
+      },
+    });
+  }
 }

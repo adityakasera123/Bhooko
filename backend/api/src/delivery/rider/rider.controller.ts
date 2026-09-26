@@ -6,6 +6,7 @@ import {
   Post,
   Req,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { RiderService } from './rider.service';
@@ -74,5 +75,15 @@ export class RiderController {
       dto.vehicleType,
       dto.vehicleNumber,
     );
+  }
+
+    @Get('me/current-delivery')
+  getCurrentDelivery(@Request() req: any) {
+    return this.riderService.getCurrentDelivery(req.user.userId);
+  }
+
+  @Get('me/delivery-history')
+  getDeliveryHistory(@Request() req: any) {
+    return this.riderService.getDeliveryHistory(req.user.userId);
   }
 }
