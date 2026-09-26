@@ -77,13 +77,13 @@ export class RiderController {
     );
   }
 
-    @Get('me/current-delivery')
-  getCurrentDelivery(@Request() req: any) {
-    return this.riderService.getCurrentDelivery(req.user.userId);
-  }
+@Get('me/current-delivery')
+getCurrentDelivery(@Req() req: { user: { id: string } }) {
+  return this.riderService.getCurrentDelivery(req.user.id);
+}
 
-  @Get('me/delivery-history')
-  getDeliveryHistory(@Request() req: any) {
-    return this.riderService.getDeliveryHistory(req.user.userId);
-  }
+@Get('me/delivery-history')
+getDeliveryHistory(@Req() req: { user: { id: string } }) {
+  return this.riderService.getDeliveryHistory(req.user.id);
+}
 }
