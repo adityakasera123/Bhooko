@@ -17,6 +17,7 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
+import { DeliveryModule } from './delivery/delivery/delivery.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { PaymentsModule } from './payments/payments.module';
     CheckoutModule,
     OrdersModule,
     PaymentsModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
   providers: [
