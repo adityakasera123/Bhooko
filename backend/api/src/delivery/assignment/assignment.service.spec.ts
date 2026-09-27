@@ -1442,5 +1442,831 @@ describe('AssignmentService', () => {
       prismaMock.$transaction,
     ).toHaveBeenCalled();
   });
+  });
+
+  describe('completeDelivery', () => {
+  const assignmentId = 'assignment-123';
+
+  it('should throw when assignment does not exist', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.completeDelivery(assignmentId),
+    ).rejects.toThrow('Delivery assignment not found');
+  });
+
+  it('should reject an assignment that is not ACCEPTED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.PENDING,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.completeDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Only accepted assignments can complete delivery',
+    );
+  });
+
+  it('should reject when delivery is not OUT_FOR_DELIVERY', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.PICKED_UP,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.completeDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Delivery is not out for delivery',
+    );
+  });
+
+  it('should reject when rider is not ON_DELIVERY', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    await expect(
+      service.completeDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Rider must be on delivery before completing delivery',
+    );
+  });
+
+  it('should successfully complete the delivery', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.DELIVERED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    txMock.deliveryEvent.create.mockResolvedValue({
+      id: 'event-123',
+      deliveryId: 'delivery-123',
+      type: DeliveryEventType.DELIVERED,
+    });
+
+    const result =
+      await service.completeDelivery(assignmentId);
+
+    expect(result).toEqual({
+      id: 'delivery-123',
+      status: DeliveryStatus.DELIVERED,
+    });
+  });
+
+  it('should change delivery status to DELIVERED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.DELIVERED,
+    });
+
+    await service.completeDelivery(assignmentId);
+
+    expect(
+      txMock.delivery.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery-123',
+      },
+      data: {
+        status: DeliveryStatus.DELIVERED,
+      },
+    });
+  });
+
+  it('should change rider availability to OFFLINE', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.DELIVERED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    await service.completeDelivery(assignmentId);
+
+    expect(
+      txMock.rider.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'rider-123',
+      },
+      data: {
+        availability: RiderAvailability.OFFLINE,
+      },
+    });
+  });
+
+  it('should create a DELIVERED delivery event', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.DELIVERED,
+    });
+
+    await service.completeDelivery(assignmentId);
+
+    expect(
+      txMock.deliveryEvent.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        deliveryId: 'delivery-123',
+        type: DeliveryEventType.DELIVERED,
+        metadata: {
+          riderId: 'rider-123',
+          assignmentId,
+        },
+      },
+    });
+  });
+
+  it('should execute completion changes inside a transaction', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.DELIVERED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    await service.completeDelivery(assignmentId);
+
+    expect(
+      prismaMock.$transaction,
+    ).toHaveBeenCalled();
+  });
+  });
+
+  describe('failDelivery', () => {
+  const assignmentId = 'assignment-123';
+
+  it('should throw when assignment does not exist', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.failDelivery(assignmentId),
+    ).rejects.toThrow('Delivery assignment not found');
+  });
+
+  it('should reject an assignment that is not ACCEPTED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.PENDING,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.failDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Only accepted assignments can fail delivery',
+    );
+  });
+
+  it('should reject when delivery is not OUT_FOR_DELIVERY', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.PICKED_UP,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.failDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Delivery is not out for delivery',
+    );
+  });
+
+  it('should reject when rider is not ON_DELIVERY', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    await expect(
+      service.failDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Rider must be on delivery before failing delivery',
+    );
+  });
+
+  it('should successfully fail the delivery', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.FAILED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    txMock.deliveryEvent.create.mockResolvedValue({
+      id: 'event-123',
+      deliveryId: 'delivery-123',
+      type: DeliveryEventType.FAILED,
+    });
+
+    const result =
+      await service.failDelivery(assignmentId);
+
+    expect(result).toEqual({
+      id: 'delivery-123',
+      status: DeliveryStatus.FAILED,
+    });
+  });
+
+  it('should change delivery status to FAILED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.FAILED,
+    });
+
+    await service.failDelivery(assignmentId);
+
+    expect(
+      txMock.delivery.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery-123',
+      },
+      data: {
+        status: DeliveryStatus.FAILED,
+      },
+    });
+  });
+
+  it('should change rider availability to OFFLINE', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.FAILED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    await service.failDelivery(assignmentId);
+
+    expect(
+      txMock.rider.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'rider-123',
+      },
+      data: {
+        availability: RiderAvailability.OFFLINE,
+      },
+    });
+  });
+
+  it('should create a FAILED delivery event', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.FAILED,
+    });
+
+    await service.failDelivery(assignmentId);
+
+    expect(
+      txMock.deliveryEvent.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        deliveryId: 'delivery-123',
+        type: DeliveryEventType.FAILED,
+        metadata: {
+          riderId: 'rider-123',
+          assignmentId,
+        },
+      },
+    });
+  });
+
+  it('should execute failure changes inside a transaction', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.FAILED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    await service.failDelivery(assignmentId);
+
+    expect(
+      prismaMock.$transaction,
+    ).toHaveBeenCalled();
+  });
+  });
+  
+  describe('cancelDelivery', () => {
+  const assignmentId = 'assignment-123';
+
+  it('should throw when assignment does not exist', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.cancelDelivery(assignmentId),
+    ).rejects.toThrow('Delivery assignment not found');
+  });
+
+  it('should reject an assignment that is not ACCEPTED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.PENDING,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.ASSIGNED,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    await expect(
+      service.cancelDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Only accepted assignments can cancel delivery',
+    );
+  });
+
+  it('should reject when delivery is already completed', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.DELIVERED,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.cancelDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Delivery cannot be cancelled in its current state',
+    );
+  });
+
+  it('should reject when delivery is already failed', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.FAILED,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.cancelDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Delivery cannot be cancelled in its current state',
+    );
+  });
+
+  it('should reject when delivery is already cancelled', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.CANCELLED,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    await expect(
+      service.cancelDelivery(assignmentId),
+    ).rejects.toThrow(
+      'Delivery cannot be cancelled in its current state',
+    );
+  });
+
+  it('should successfully cancel an accepted delivery', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.CANCELLED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    txMock.deliveryEvent.create.mockResolvedValue({
+      id: 'event-123',
+      deliveryId: 'delivery-123',
+      type: DeliveryEventType.CANCELLED,
+    });
+
+    const result =
+      await service.cancelDelivery(assignmentId);
+
+    expect(result).toEqual({
+      id: 'delivery-123',
+      status: DeliveryStatus.CANCELLED,
+    });
+  });
+
+  it('should change delivery status to CANCELLED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.CANCELLED,
+    });
+
+    await service.cancelDelivery(assignmentId);
+
+    expect(
+      txMock.delivery.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery-123',
+      },
+      data: {
+        status: DeliveryStatus.CANCELLED,
+      },
+    });
+  });
+
+  it('should release rider availability', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.CANCELLED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    await service.cancelDelivery(assignmentId);
+
+    expect(
+      txMock.rider.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: 'rider-123',
+      },
+      data: {
+        availability: RiderAvailability.OFFLINE,
+      },
+    });
+  });
+
+  it('should create a CANCELLED delivery event', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.CANCELLED,
+    });
+
+    await service.cancelDelivery(assignmentId);
+
+    expect(
+      txMock.deliveryEvent.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        deliveryId: 'delivery-123',
+        type: DeliveryEventType.CANCELLED,
+        metadata: {
+          riderId: 'rider-123',
+          assignmentId,
+        },
+      },
+    });
+  });
+
+  it('should execute cancellation changes inside a transaction', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      deliveryId: 'delivery-123',
+      riderId: 'rider-123',
+      delivery: {
+        id: 'delivery-123',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+      rider: {
+        id: 'rider-123',
+        availability: RiderAvailability.ON_DELIVERY,
+      },
+    });
+
+    txMock.delivery.update.mockResolvedValue({
+      id: 'delivery-123',
+      status: DeliveryStatus.CANCELLED,
+    });
+
+    txMock.rider.update.mockResolvedValue({
+      id: 'rider-123',
+      availability: RiderAvailability.OFFLINE,
+    });
+
+    await service.cancelDelivery(assignmentId);
+
+    expect(
+      prismaMock.$transaction,
+    ).toHaveBeenCalled();
+  });
 });
+  
+
 });

@@ -449,5 +449,235 @@ export class AssignmentService {
 
     return delivery;
   });
+  }
+  async completeDelivery(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
+
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
+
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can complete delivery',
+    );
+  }
+
+  if (
+    assignment.delivery.status !==
+    DeliveryStatus.OUT_FOR_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Delivery is not out for delivery',
+    );
+  }
+
+  if (
+    assignment.rider.availability !==
+    RiderAvailability.ON_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Rider must be on delivery before completing delivery',
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const delivery = await tx.delivery.update({
+      where: {
+        id: assignment.deliveryId,
+      },
+      data: {
+        status: DeliveryStatus.DELIVERED,
+      },
+    });
+
+    await tx.rider.update({
+      where: {
+        id: assignment.riderId,
+      },
+      data: {
+        availability: RiderAvailability.OFFLINE,
+      },
+    });
+
+    await tx.deliveryEvent.create({
+      data: {
+        deliveryId: assignment.deliveryId,
+        type: DeliveryEventType.DELIVERED,
+        metadata: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    });
+
+    return delivery;
+  });
+  }
+  async failDelivery(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
+
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
+
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can fail delivery',
+    );
+  }
+
+  if (
+    assignment.delivery.status !==
+    DeliveryStatus.OUT_FOR_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Delivery is not out for delivery',
+    );
+  }
+
+  if (
+    assignment.rider.availability !==
+    RiderAvailability.ON_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Rider must be on delivery before failing delivery',
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const delivery = await tx.delivery.update({
+      where: {
+        id: assignment.deliveryId,
+      },
+      data: {
+        status: DeliveryStatus.FAILED,
+      },
+    });
+
+    await tx.rider.update({
+      where: {
+        id: assignment.riderId,
+      },
+      data: {
+        availability: RiderAvailability.OFFLINE,
+      },
+    });
+
+    await tx.deliveryEvent.create({
+      data: {
+        deliveryId: assignment.deliveryId,
+        type: DeliveryEventType.FAILED,
+        metadata: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    });
+
+    return delivery;
+  });
+  }
+
+  async cancelDelivery(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
+
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
+
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can cancel delivery',
+    );
+  }
+
+  if (
+    assignment.delivery.status ===
+      DeliveryStatus.DELIVERED ||
+    assignment.delivery.status ===
+      DeliveryStatus.FAILED ||
+    assignment.delivery.status ===
+      DeliveryStatus.CANCELLED
+  ) {
+    throw new ConflictException(
+      'Delivery cannot be cancelled in its current state',
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const delivery = await tx.delivery.update({
+      where: {
+        id: assignment.deliveryId,
+      },
+      data: {
+        status: DeliveryStatus.CANCELLED,
+      },
+    });
+
+    await tx.rider.update({
+      where: {
+        id: assignment.riderId,
+      },
+      data: {
+        availability: RiderAvailability.OFFLINE,
+      },
+    });
+
+    await tx.deliveryEvent.create({
+      data: {
+        deliveryId: assignment.deliveryId,
+        type: DeliveryEventType.CANCELLED,
+        metadata: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    });
+
+    return delivery;
+  });
 }
 }
