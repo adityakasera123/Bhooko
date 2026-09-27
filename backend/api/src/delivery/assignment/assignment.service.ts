@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   DeliveryAssignmentStatus,
+  DeliveryEventType,
   DeliveryStatus,
   RiderAvailability,
   RiderStatus,
@@ -140,4 +141,174 @@ export class AssignmentService {
       return assignment;
     });
   }
+  async acceptAssignment(assignmentId: string) {
+    const assignment =
+      await this.prisma.deliveryAssignment.findUnique({
+        where: {
+          id: assignmentId,
+        },
+        include: {
+          delivery: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+          rider: {
+            select: {
+              id: true,
+              availability: true,
+            },
+          },
+        },
+      });
+
+    if (!assignment) {
+      throw new NotFoundException(
+        'Delivery assignment not found',
+      );
+    }
+
+    if (
+      assignment.status !==
+      DeliveryAssignmentStatus.PENDING
+    ) {
+      throw new ConflictException(
+        'Only pending assignments can be accepted',
+      );
+    }
+
+    if (
+      assignment.delivery.status !==
+      DeliveryStatus.ASSIGNED
+    ) {
+      throw new ConflictException(
+        'Delivery is not available for acceptance',
+      );
+    }
+
+    if (
+      assignment.rider.availability !==
+      RiderAvailability.ASSIGNED
+    ) {
+      throw new ConflictException(
+        'Rider is not assigned to this delivery',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedAssignment =
+        await tx.deliveryAssignment.update({
+          where: {
+            id: assignmentId,
+          },
+          data: {
+            status: DeliveryAssignmentStatus.ACCEPTED,
+            acceptedAt: new Date(),
+          },
+        });
+
+      await tx.delivery.update({
+        where: {
+          id: assignment.deliveryId,
+        },
+        data: {
+          status: DeliveryStatus.RIDER_ACCEPTED,
+        },
+      });
+
+      await tx.rider.update({
+        where: {
+          id: assignment.riderId,
+        },
+        data: {
+          availability: RiderAvailability.ON_DELIVERY,
+        },
+      });
+
+      await tx.deliveryEvent.create({
+        data: {
+          deliveryId: assignment.deliveryId,
+          type: DeliveryEventType.ACCEPTED,
+          metadata: {
+            riderId: assignment.riderId,
+            assignmentId: assignment.id,
+          },
+        },
+      });
+
+      return updatedAssignment;
+    });
+  }
+
+  async arriveAtRestaurant(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
+
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
+
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can mark arrival',
+    );
+  }
+
+  if (
+    assignment.delivery.status !==
+    DeliveryStatus.RIDER_ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Delivery is not ready for restaurant arrival',
+    );
+  }
+
+  if (
+    assignment.rider.availability !==
+    RiderAvailability.ON_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Rider must be on delivery before arrival',
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const delivery = await tx.delivery.update({
+      where: {
+        id: assignment.deliveryId,
+      },
+      data: {
+        status:
+          DeliveryStatus.ARRIVED_AT_RESTAURANT,
+      },
+    });
+
+    await tx.deliveryEvent.create({
+      data: {
+        deliveryId: assignment.deliveryId,
+        type: DeliveryEventType.ARRIVED,
+        metadata: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    });
+
+    return delivery;
+  });
+}
 }
