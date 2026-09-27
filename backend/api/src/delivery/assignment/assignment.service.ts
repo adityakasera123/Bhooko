@@ -310,5 +310,144 @@ export class AssignmentService {
 
     return delivery;
   });
+  }
+  async pickupDelivery(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
+
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
+
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can pick up delivery',
+    );
+  }
+
+  if (
+    assignment.delivery.status !==
+    DeliveryStatus.ARRIVED_AT_RESTAURANT
+  ) {
+    throw new ConflictException(
+      'Delivery is not ready for pickup',
+    );
+  }
+
+  if (
+    assignment.rider.availability !==
+    RiderAvailability.ON_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Rider must be on delivery before pickup',
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const delivery = await tx.delivery.update({
+      where: {
+        id: assignment.deliveryId,
+      },
+      data: {
+        status: DeliveryStatus.PICKED_UP,
+      },
+    });
+
+    await tx.deliveryEvent.create({
+      data: {
+        deliveryId: assignment.deliveryId,
+        type: DeliveryEventType.PICKED_UP,
+        metadata: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    });
+
+    return delivery;
+  });
+  }
+
+  async outForDelivery(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
+
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
+
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can go out for delivery',
+    );
+  }
+
+  if (
+    assignment.delivery.status !==
+    DeliveryStatus.PICKED_UP
+  ) {
+    throw new ConflictException(
+      'Delivery is not ready to go out for delivery',
+    );
+  }
+
+  if (
+    assignment.rider.availability !==
+    RiderAvailability.ON_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Rider must be on delivery before going out for delivery',
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const delivery = await tx.delivery.update({
+      where: {
+        id: assignment.deliveryId,
+      },
+      data: {
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+      },
+    });
+
+    await tx.deliveryEvent.create({
+      data: {
+        deliveryId: assignment.deliveryId,
+        type: DeliveryEventType.OUT_FOR_DELIVERY,
+        metadata: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    });
+
+    return delivery;
+  });
 }
 }
