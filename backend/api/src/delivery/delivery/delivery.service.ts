@@ -52,4 +52,95 @@ export class DeliveryService {
       return delivery;
     });
   }
+
+ async getCustomerTracking(
+  deliveryId: string,
+  customerId: string,
+) {
+  const delivery = await this.prisma.delivery.findUnique({
+    where: {
+      id: deliveryId,
+    },
+    include: {
+      order: {
+        select: {
+          id: true,
+          customerId: true,
+          deliveryAddressLabel: true,
+          deliveryContactName: true,
+          deliveryContactPhone: true,
+          deliveryAddressLine1: true,
+          deliveryAddressLine2: true,
+          deliveryAddressArea: true,
+          deliveryAddressCity: true,
+          deliveryAddressState: true,
+          deliveryAddressPincode: true,
+          deliveryLatitude: true,
+          deliveryLongitude: true,
+          deliveryInstructions: true,
+        },
+      },
+      rider: {
+        select: {
+          id: true,
+          vehicleType: true,
+          vehicleNumber: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!delivery) {
+    throw new NotFoundException('Delivery not found');
+  }
+
+  if (delivery.order.customerId !== customerId) {
+    throw new ConflictException(
+      'You are not authorized to access this delivery',
+    );
+  }
+
+  return {
+    deliveryId: delivery.id,
+    orderId: delivery.order.id,
+    status: delivery.status,
+
+    rider: delivery.rider
+      ? {
+          id: delivery.rider.id,
+          name: delivery.rider.user.name,
+          phone: delivery.rider.user.phone,
+          vehicleType: delivery.rider.vehicleType,
+          vehicleNumber: delivery.rider.vehicleNumber,
+        }
+      : null,
+
+    deliveryAddress: {
+      label: delivery.order.deliveryAddressLabel,
+      contactName: delivery.order.deliveryContactName,
+      contactPhone: delivery.order.deliveryContactPhone,
+      addressLine1: delivery.order.deliveryAddressLine1,
+      addressLine2: delivery.order.deliveryAddressLine2,
+      area: delivery.order.deliveryAddressArea,
+      city: delivery.order.deliveryAddressCity,
+      state: delivery.order.deliveryAddressState,
+      pincode: delivery.order.deliveryAddressPincode,
+      latitude: delivery.order.deliveryLatitude,
+      longitude: delivery.order.deliveryLongitude,
+      instructions: delivery.order.deliveryInstructions,
+    },
+
+    timestamps: {
+      createdAt: delivery.createdAt,
+      updatedAt: delivery.updatedAt,
+    },
+  };
+}
 }

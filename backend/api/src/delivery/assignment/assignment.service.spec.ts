@@ -382,6 +382,7 @@ describe('AssignmentService', () => {
         },
         data: {
           riderId,
+          status: DeliveryStatus.ASSIGNED,
         },
       });
     });
@@ -1157,6 +1158,7 @@ describe('AssignmentService', () => {
       },
       data: {
         status: DeliveryStatus.PICKED_UP,
+        pickupAt: expect.any(Date),
       },
     });
   });
@@ -1374,6 +1376,7 @@ describe('AssignmentService', () => {
       },
       data: {
         status: DeliveryStatus.OUT_FOR_DELIVERY,
+        outForDeliveryAt: expect.any(Date),
       },
     });
   });
@@ -1596,6 +1599,7 @@ describe('AssignmentService', () => {
       },
       data: {
         status: DeliveryStatus.DELIVERED,
+        deliveredAt: expect.any(Date),
       },
     });
   });
@@ -1863,6 +1867,8 @@ describe('AssignmentService', () => {
       },
       data: {
         status: DeliveryStatus.FAILED,
+        failedAt: expect.any(Date),
+        failureReason: null,
       },
     });
   });
@@ -1939,6 +1945,7 @@ describe('AssignmentService', () => {
         metadata: {
           riderId: 'rider-123',
           assignmentId,
+          reason: null,
         },
       },
     });
@@ -1978,6 +1985,295 @@ describe('AssignmentService', () => {
   });
   });
   
+  describe('rejectAssignment', () => {
+  it('should throw when assignment does not exist', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.rejectAssignment(assignmentId),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject an assignment that is not PENDING', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.ACCEPTED,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    await expect(
+      service.rejectAssignment(assignmentId),
+    ).rejects.toThrow(ConflictException);
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject when delivery is not ASSIGNED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.RIDER_ACCEPTED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    await expect(
+      service.rejectAssignment(assignmentId),
+    ).rejects.toThrow(ConflictException);
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should reject when rider is not ASSIGNED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ONLINE,
+      },
+    });
+
+    await expect(
+      service.rejectAssignment(assignmentId),
+    ).rejects.toThrow(ConflictException);
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should successfully reject a valid assignment', async () => {
+    const rejectedAssignment = {
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.REJECTED,
+    };
+
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    txMock.deliveryAssignment.update.mockResolvedValue(
+      rejectedAssignment,
+    );
+
+    const result = await service.rejectAssignment(
+      assignmentId,
+    );
+
+    expect(result).toEqual(rejectedAssignment);
+  });
+
+  it('should change assignment status to REJECTED', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    txMock.deliveryAssignment.update.mockResolvedValue({});
+
+    await service.rejectAssignment(assignmentId);
+
+    expect(
+      txMock.deliveryAssignment.update,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: assignmentId,
+      },
+      data: {
+        status: DeliveryAssignmentStatus.REJECTED,
+      },
+    });
+  });
+
+  it('should release the rider from the delivery', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    txMock.deliveryAssignment.update.mockResolvedValue({});
+    txMock.delivery.update.mockResolvedValue({});
+
+    await service.rejectAssignment(assignmentId);
+
+    expect(txMock.delivery.update).toHaveBeenCalledWith({
+      where: {
+        id: deliveryId,
+      },
+      data: {
+        riderId: null,
+        status: DeliveryStatus.CREATED,
+      },
+    });
+  });
+
+  it('should change rider availability back to ONLINE', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    txMock.deliveryAssignment.update.mockResolvedValue({});
+    txMock.delivery.update.mockResolvedValue({});
+    txMock.rider.update.mockResolvedValue({});
+
+    await service.rejectAssignment(assignmentId);
+
+    expect(txMock.rider.update).toHaveBeenCalledWith({
+      where: {
+        id: riderId,
+      },
+      data: {
+        availability: RiderAvailability.ONLINE,
+      },
+    });
+  });
+
+  it('should create a REJECTED delivery event', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    txMock.deliveryAssignment.update.mockResolvedValue({});
+    txMock.delivery.update.mockResolvedValue({});
+    txMock.rider.update.mockResolvedValue({});
+    txMock.deliveryEvent.create.mockResolvedValue({});
+
+    await service.rejectAssignment(assignmentId);
+
+    expect(
+      txMock.deliveryEvent.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        deliveryId,
+        type: DeliveryEventType.REJECTED,
+        metadata: {
+          riderId,
+          assignmentId,
+        },
+      },
+    });
+  });
+
+  it('should execute rejection changes inside a transaction', async () => {
+    prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
+      id: assignmentId,
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+      delivery: {
+        id: deliveryId,
+        status: DeliveryStatus.ASSIGNED,
+        riderId,
+      },
+      rider: {
+        id: riderId,
+        availability: RiderAvailability.ASSIGNED,
+      },
+    });
+
+    txMock.deliveryAssignment.update.mockResolvedValue({});
+    txMock.delivery.update.mockResolvedValue({});
+    txMock.rider.update.mockResolvedValue({});
+    txMock.deliveryEvent.create.mockResolvedValue({});
+
+    await service.rejectAssignment(assignmentId);
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(
+      txMock.deliveryAssignment.update,
+    ).toHaveBeenCalled();
+    expect(txMock.delivery.update).toHaveBeenCalled();
+    expect(txMock.rider.update).toHaveBeenCalled();
+    expect(txMock.deliveryEvent.create).toHaveBeenCalled();
+  });
+});
+
   describe('cancelDelivery', () => {
   const assignmentId = 'assignment-123';
 
@@ -2153,6 +2449,8 @@ describe('AssignmentService', () => {
       },
       data: {
         status: DeliveryStatus.CANCELLED,
+        cancelledAt: expect.any(Date),
+        cancellationReason: null,
       },
     });
   });
@@ -2229,6 +2527,7 @@ describe('AssignmentService', () => {
         metadata: {
           riderId: 'rider-123',
           assignmentId,
+          reason: null,
         },
       },
     });
@@ -2266,7 +2565,7 @@ describe('AssignmentService', () => {
       prismaMock.$transaction,
     ).toHaveBeenCalled();
   });
-});
+  });
   
 
 });
