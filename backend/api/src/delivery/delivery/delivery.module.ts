@@ -5,6 +5,7 @@ import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { DeliveryGateway } from '../gateway/delivery.gateway';
 import { DeliveryRealtimeAuthService } from '../gateway/delivery-realtime-auth.service';
+import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
 
 @Module({
   controllers: [DeliveryController],
@@ -12,8 +13,12 @@ import { DeliveryRealtimeAuthService } from '../gateway/delivery-realtime-auth.s
     DeliveryService,
     DeliveryGateway,
     DeliveryRealtimeAuthService,
+    DeliveryRealtimeService,
     PrismaService,
   ],
-  exports: [DeliveryService],
+  exports: [
+    DeliveryService,
+    DeliveryRealtimeService,
+  ],
 })
 export class DeliveryModule {}

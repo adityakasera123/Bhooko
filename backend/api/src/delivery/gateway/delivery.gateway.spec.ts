@@ -5,6 +5,7 @@ import { Socket } from 'socket.io';
 
 import { DeliveryGateway } from './delivery.gateway';
 import { DeliveryRealtimeAuthService } from './delivery-realtime-auth.service';
+import { DeliveryRealtimeService } from './delivery-realtime.service';
 
 describe('DeliveryGateway', () => {
   let gateway: DeliveryGateway;
@@ -14,14 +15,18 @@ describe('DeliveryGateway', () => {
   };
 
   let realtimeAuth: {
-  canJoinDelivery: jest.MockedFunction<
-    (
-      deliveryId: string,
-      userId: string,
-      role: string,
-    ) => Promise<boolean>
-  >;
-};
+    canJoinDelivery: jest.MockedFunction<
+      (
+        deliveryId: string,
+        userId: string,
+        role: string,
+      ) => Promise<boolean>
+    >;
+  };
+
+  let realtimeService: {
+    setServer: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -34,9 +39,14 @@ describe('DeliveryGateway', () => {
       canJoinDelivery: jest.fn(),
     };
 
+    realtimeService = {
+      setServer: jest.fn(),
+    };
+
     gateway = new DeliveryGateway(
       jwtService as unknown as JwtService,
       realtimeAuth as unknown as DeliveryRealtimeAuthService,
+      realtimeService as unknown as DeliveryRealtimeService,
     );
   });
 

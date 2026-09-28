@@ -2,6 +2,7 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -10,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 
 import { DeliveryRealtimeAuthService } from './delivery-realtime-auth.service';
+import { DeliveryRealtimeService } from './delivery-realtime.service';
 
 interface JwtPayload {
   sub: string;
@@ -32,7 +34,10 @@ interface AuthenticatedSocket extends Socket {
   },
 })
 export class DeliveryGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnGatewayInit
 {
   @WebSocketServer()
   server!: Server;
@@ -40,7 +45,12 @@ export class DeliveryGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly realtimeAuth: DeliveryRealtimeAuthService,
+    private readonly realtimeService: DeliveryRealtimeService,
   ) {}
+
+  afterInit(server: Server) {
+    this.realtimeService.setServer(server);
+  }
 
   handleConnection(client: Socket) {
     const token = this.extractToken(client);
@@ -147,7 +157,10 @@ export class DeliveryGateway
   private extractToken(client: Socket): string | null {
     const authToken = client.handshake.auth?.token;
 
-    if (typeof authToken === 'string' && authToken.length > 0) {
+    if (
+      typeof authToken === 'string' &&
+      authToken.length > 0
+    ) {
       return this.normalizeToken(authToken);
     }
 
