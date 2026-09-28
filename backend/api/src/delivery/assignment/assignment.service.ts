@@ -12,10 +12,14 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
 
 @Injectable()
 export class AssignmentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeService: DeliveryRealtimeService,
+  ) {}
 
   async assignRider(
     deliveryId: string,
@@ -102,43 +106,60 @@ export class AssignmentService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const assignment = await tx.deliveryAssignment.create({
-        data: {
-          deliveryId,
-          riderId,
-          status: DeliveryAssignmentStatus.PENDING,
-        },
-      });
+   const assignment = await this.prisma.$transaction(async (tx) => {
+  const newAssignment = await tx.deliveryAssignment.create({
+    data: {
+      deliveryId,
+      riderId,
+      status: DeliveryAssignmentStatus.PENDING,
+    },
+  });
 
-      await tx.delivery.update({
-        where: { id: deliveryId },
-        data: {
-          riderId,
-          status: DeliveryStatus.ASSIGNED,
-        },
-      });
+  await tx.delivery.update({
+    where: { id: deliveryId },
+    data: {
+      riderId,
+      status: DeliveryStatus.ASSIGNED,
+    },
+  });
 
-      await tx.rider.update({
-        where: { id: riderId },
-        data: {
-          availability: RiderAvailability.ASSIGNED,
-        },
-      });
+  await tx.rider.update({
+    where: { id: riderId },
+    data: {
+      availability: RiderAvailability.ASSIGNED,
+    },
+  });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId,
-          type: DeliveryEventType.ASSIGNED,
-          metadata: {
-            riderId,
-            assignmentId: assignment.id,
-          },
-        },
-      });
+  await tx.deliveryEvent.create({
+    data: {
+      deliveryId,
+      type: DeliveryEventType.ASSIGNED,
+      metadata: {
+        riderId,
+        assignmentId: newAssignment.id,
+      },
+    },
+  });
 
-      return assignment;
-    });
+  return newAssignment;
+});
+
+this.realtimeService.emitToDelivery(
+  deliveryId,
+  {
+    deliveryId,
+    event: 'delivery:rider_assigned',
+    status: DeliveryStatus.ASSIGNED,
+    timestamp: new Date().toISOString(),
+    data: {
+      orderId: delivery.orderId,
+      riderId,
+      assignmentId: assignment.id,
+    },
+  },
+);
+
+return assignment;
   }
 
   async acceptAssignment(assignmentId: string) {

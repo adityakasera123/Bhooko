@@ -13,6 +13,7 @@ import {
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { AssignmentService } from './assignment.service';
+import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
 
 type MockFn = jest.MockedFunction<any>;
 
@@ -36,6 +37,9 @@ type TransactionMock = MockFn;
 
 describe('AssignmentService', () => {
   let service: AssignmentService;
+  let realtimeService: {
+  emitToDelivery: jest.Mock;
+};
 
   const deliveryId = 'delivery-1';
   const riderId = 'rider-1';
@@ -81,10 +85,13 @@ describe('AssignmentService', () => {
         return callback(txMock);
       },
     );
-
-    service = new AssignmentService(
-      prismaMock as unknown as PrismaService,
-    );
+realtimeService = {
+    emitToDelivery: jest.fn(),
+  };
+   service = new AssignmentService(
+  prismaMock as unknown as PrismaService,
+  realtimeService as unknown as DeliveryRealtimeService,
+);
   });
 
   describe('assignRider', () => {
