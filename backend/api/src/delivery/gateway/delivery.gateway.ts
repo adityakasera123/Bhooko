@@ -1,21 +1,24 @@
-import { UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
   WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
+import { Server, Socket } from 'socket.io';
 
-interface SocketJwtPayload {
+import { DeliveryRealtimeAuthService } from './delivery-realtime-auth.service';
+
+interface JwtPayload {
   sub: string;
   role: string;
 }
 
 interface AuthenticatedSocket extends Socket {
-  data: Socket['data'] & {
-    user?: {
+  data: {
+    user: {
       userId: string;
       role: string;
     };
@@ -25,40 +28,41 @@ interface AuthenticatedSocket extends Socket {
 @WebSocketGateway({
   namespace: '/delivery',
   cors: {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:5174',
-    ],
-    credentials: true,
+    origin: '*',
   },
 })
 export class DeliveryGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
-  constructor(private readonly jwtService: JwtService) {}
+  @WebSocketServer()
+  server!: Server;
 
-  handleConnection(
-    @ConnectedSocket() client: AuthenticatedSocket,
-  ): void {
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly realtimeAuth: DeliveryRealtimeAuthService,
+  ) {}
+
+  handleConnection(client: Socket) {
+    const token = this.extractToken(client);
+
+    if (!token) {
+      client.disconnect(true);
+      return;
+    }
+
     try {
-      const token = this.extractToken(client);
-
-      if (!token) {
-        throw new UnauthorizedException(
-          'Authentication token is required',
-        );
-      }
-
       const payload =
-        this.jwtService.verify<SocketJwtPayload>(token);
+        this.jwtService.verify<JwtPayload>(token);
 
       if (!payload.sub || !payload.role) {
-        throw new UnauthorizedException(
-          'Invalid authentication token',
-        );
+        client.disconnect(true);
+        return;
       }
 
-      client.data.user = {
+      const authenticatedClient =
+        client as AuthenticatedSocket;
+
+      authenticatedClient.data.user = {
         userId: payload.sub,
         role: payload.role,
       };
@@ -67,30 +71,101 @@ export class DeliveryGateway
     }
   }
 
-  handleDisconnect(
+  @SubscribeMessage('joinDelivery')
+  async handleJoinDelivery(
     @ConnectedSocket() client: AuthenticatedSocket,
-  ): void {
-    // Connection cleanup will be added when room subscriptions
-    // are introduced.
+    payload: { deliveryId?: string },
+  ) {
+    const deliveryId = payload?.deliveryId;
+
+    if (!deliveryId) {
+      return {
+        event: 'joinDelivery:error',
+        data: {
+          message: 'deliveryId is required',
+        },
+      };
+    }
+
+    const user = client.data.user;
+
+    if (!user) {
+      client.disconnect(true);
+
+      return {
+        event: 'joinDelivery:error',
+        data: {
+          message: 'Socket is not authenticated',
+        },
+      };
+    }
+
+    try {
+      const allowed =
+        await this.realtimeAuth.canJoinDelivery(
+          deliveryId,
+          user.userId,
+          user.role,
+        );
+
+      if (!allowed) {
+        return {
+          event: 'joinDelivery:error',
+          data: {
+            message:
+              'You are not authorized to join this delivery',
+          },
+        };
+      }
+
+      const room = `delivery:${deliveryId}`;
+
+      await client.join(room);
+
+      return {
+        event: 'joinDelivery:success',
+        data: {
+          deliveryId,
+          room,
+        },
+      };
+    } catch {
+      return {
+        event: 'joinDelivery:error',
+        data: {
+          message: 'Unable to join delivery',
+        },
+      };
+    }
+  }
+
+  handleDisconnect(client: Socket) {
+    // Socket.IO automatically removes the client
+    // from all rooms when it disconnects.
   }
 
   private extractToken(client: Socket): string | null {
     const authToken = client.handshake.auth?.token;
 
     if (typeof authToken === 'string' && authToken.length > 0) {
-      return authToken;
+      return this.normalizeToken(authToken);
     }
 
-    const authorizationHeader =
+    const authorization =
       client.handshake.headers.authorization;
 
-    if (
-      typeof authorizationHeader === 'string' &&
-      authorizationHeader.startsWith('Bearer ')
-    ) {
-      return authorizationHeader.slice('Bearer '.length);
+    if (typeof authorization === 'string') {
+      return this.normalizeToken(authorization);
     }
 
     return null;
+  }
+
+  private normalizeToken(token: string): string {
+    if (token.startsWith('Bearer ')) {
+      return token.slice(7);
+    }
+
+    return token;
   }
 }

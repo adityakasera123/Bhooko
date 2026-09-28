@@ -13,7 +13,6 @@ import { DeliveryRealtimeAuthService } from '../gateway/delivery-realtime-auth.s
     DeliveryGateway,
     DeliveryRealtimeAuthService,
     PrismaService,
-    
   ],
   exports: [DeliveryService],
 })
