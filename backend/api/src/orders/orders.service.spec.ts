@@ -10,6 +10,7 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricingService } from '../pricing/pricing.service';
 import { PaymentsService } from '../payments/payments.service';
+import { DeliveryService } from '../delivery/delivery/delivery.service';
 import {
   UpdateOrderStatus,
   UpdateOrderStatusDto,
@@ -61,6 +62,13 @@ describe('OrdersService', () => {
             provide: OrderStateMachineService,
             useValue: orderStateMachineMock,
           },
+
+          {
+  provide: DeliveryService,
+  useValue: {
+    createDelivery: jest.fn(),
+  },
+},
 
          {
   provide: PaymentsService,

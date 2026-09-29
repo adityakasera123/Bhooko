@@ -31,6 +31,9 @@ type TxMock = {
   deliveryEvent: {
     create: MockFn;
   };
+  order: {
+  update: MockFn;
+};
 };
 
 type TransactionMock = MockFn;
@@ -58,6 +61,9 @@ describe('AssignmentService', () => {
   },
   deliveryEvent: {
     create: jest.fn() as MockFn,
+  },
+  order: {
+    update: jest.fn() as MockFn,
   },
 };
 
@@ -2131,16 +2137,17 @@ realtimeService = {
 
     await service.rejectAssignment(assignmentId);
 
-    expect(
-      txMock.deliveryAssignment.update,
-    ).toHaveBeenCalledWith({
-      where: {
-        id: assignmentId,
-      },
-      data: {
-        status: DeliveryAssignmentStatus.REJECTED,
-      },
-    });
+   expect(
+  txMock.deliveryAssignment.update,
+).toHaveBeenCalledWith({
+  where: {
+    id: assignmentId,
+  },
+  data: {
+    status: DeliveryAssignmentStatus.REJECTED,
+    rejectedAt: expect.any(Date),
+  },
+});
   });
 
   it('should release the rider from the delivery', async () => {

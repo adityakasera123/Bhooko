@@ -3,10 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import {
   DeliveryAssignmentStatus,
   DeliveryEventType,
   DeliveryStatus,
+  OrderStatus,
   RiderAvailability,
   RiderStatus,
 } from '@prisma/client';
@@ -84,21 +86,22 @@ export class AssignmentService {
       );
     }
 
-    const activeDelivery = await this.prisma.delivery.findFirst({
-      where: {
-        riderId,
-        status: {
-          notIn: [
-            DeliveryStatus.DELIVERED,
-            DeliveryStatus.FAILED,
-            DeliveryStatus.CANCELLED,
-          ],
+    const activeDelivery =
+      await this.prisma.delivery.findFirst({
+        where: {
+          riderId,
+          status: {
+            notIn: [
+              DeliveryStatus.DELIVERED,
+              DeliveryStatus.FAILED,
+              DeliveryStatus.CANCELLED,
+            ],
+          },
         },
-      },
-      select: {
-        id: true,
-      },
-    });
+        select: {
+          id: true,
+        },
+      });
 
     if (activeDelivery) {
       throw new ConflictException(
@@ -323,421 +326,461 @@ export class AssignmentService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const rejectedAssignment =
-        await tx.deliveryAssignment.update({
-          where: {
-            id: assignmentId,
-          },
-          data: {
-            status: DeliveryAssignmentStatus.REJECTED,
-          },
-        });
+    const rejectedAssignment =
+      await this.prisma.$transaction(async (tx) => {
+        const rejectedAssignment =
+          await tx.deliveryAssignment.update({
+            where: {
+              id: assignmentId,
+            },
+            data: {
+              status: DeliveryAssignmentStatus.REJECTED,
+              rejectedAt: new Date(),
+            },
+          });
 
-      await tx.delivery.update({
-        where: {
-          id: assignment.deliveryId,
-        },
-        data: {
-          riderId: null,
-          status: DeliveryStatus.CREATED,
-        },
-      });
-
-      await tx.rider.update({
-        where: {
-          id: assignment.riderId,
-        },
-        data: {
-          availability: RiderAvailability.ONLINE,
-        },
-      });
-
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.REJECTED,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
-          },
-        },
-      });
-
-      return rejectedAssignment;
-    });
-  }
-
- async arriveAtRestaurant(assignmentId: string) {
-  const assignment =
-    await this.prisma.deliveryAssignment.findUnique({
-      where: {
-        id: assignmentId,
-      },
-      include: {
-        delivery: true,
-        rider: true,
-      },
-    });
-
-  if (!assignment) {
-    throw new NotFoundException(
-      'Delivery assignment not found',
-    );
-  }
-
-  if (
-    assignment.status !==
-    DeliveryAssignmentStatus.ACCEPTED
-  ) {
-    throw new ConflictException(
-      'Only accepted assignments can mark arrival',
-    );
-  }
-
-  if (
-    assignment.delivery.status !==
-    DeliveryStatus.RIDER_ACCEPTED
-  ) {
-    throw new ConflictException(
-      'Delivery is not ready for restaurant arrival',
-    );
-  }
-
-  if (
-    assignment.rider.availability !==
-    RiderAvailability.ON_DELIVERY
-  ) {
-    throw new ConflictException(
-      'Rider must be on delivery before arrival',
-    );
-  }
-
-  const delivery = await this.prisma.$transaction(
-    async (tx) => {
-      const updatedDelivery =
         await tx.delivery.update({
           where: {
             id: assignment.deliveryId,
           },
           data: {
-            status:
-              DeliveryStatus.ARRIVED_AT_RESTAURANT,
+            riderId: null,
+            status: DeliveryStatus.CREATED,
           },
         });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.ARRIVED,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
-          },
-        },
-      });
-
-      return updatedDelivery;
-    },
-  );
-
-  this.realtimeService.emitToDelivery(
-    assignment.deliveryId,
-    {
-      deliveryId: assignment.deliveryId,
-      event: 'delivery:arrived_at_restaurant',
-      status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
-      timestamp: new Date().toISOString(),
-      data: {
-        riderId: assignment.riderId,
-        assignmentId,
-      },
-    },
-  );
-
-  return delivery;
-}
-
-async pickupDelivery(assignmentId: string) {
-  const assignment =
-    await this.prisma.deliveryAssignment.findUnique({
-      where: {
-        id: assignmentId,
-      },
-      include: {
-        delivery: true,
-        rider: true,
-      },
-    });
-
-  if (!assignment) {
-    throw new NotFoundException(
-      'Delivery assignment not found',
-    );
-  }
-
-  if (
-    assignment.status !==
-    DeliveryAssignmentStatus.ACCEPTED
-  ) {
-    throw new ConflictException(
-      'Only accepted assignments can pick up delivery',
-    );
-  }
-
-  if (
-    assignment.delivery.status !==
-    DeliveryStatus.ARRIVED_AT_RESTAURANT
-  ) {
-    throw new ConflictException(
-      'Delivery is not ready for pickup',
-    );
-  }
-
-  if (
-    assignment.rider.availability !==
-    RiderAvailability.ON_DELIVERY
-  ) {
-    throw new ConflictException(
-      'Rider must be on delivery before pickup',
-    );
-  }
-
-  const pickupAt = new Date();
-
-  const delivery =
-    await this.prisma.$transaction(async (tx) => {
-      const updatedDelivery =
-        await tx.delivery.update({
+        await tx.rider.update({
           where: {
-            id: assignment.deliveryId,
+            id: assignment.riderId,
           },
           data: {
-            status: DeliveryStatus.PICKED_UP,
-            pickupAt,
+            availability: RiderAvailability.ONLINE,
           },
         });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.PICKED_UP,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
+        await tx.deliveryEvent.create({
+          data: {
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.REJECTED,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+            },
           },
+        });
+
+        return rejectedAssignment;
+      });
+
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:assignment_rejected',
+        status: DeliveryStatus.CREATED,
+        timestamp: new Date().toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    );
+
+    return rejectedAssignment;
+  }
+
+  async arriveAtRestaurant(assignmentId: string) {
+    const assignment =
+      await this.prisma.deliveryAssignment.findUnique({
+        where: {
+          id: assignmentId,
+        },
+        include: {
+          delivery: true,
+          rider: true,
         },
       });
 
-      return updatedDelivery;
-    });
+    if (!assignment) {
+      throw new NotFoundException(
+        'Delivery assignment not found',
+      );
+    }
 
-  this.realtimeService.emitToDelivery(
-    assignment.deliveryId,
-    {
-      deliveryId: assignment.deliveryId,
-      event: 'deliveryStatusChanged',
-      status: DeliveryStatus.PICKED_UP,
-      timestamp: new Date().toISOString(),
-      data: {
-        riderId: assignment.riderId,
-        pickupAt: pickupAt.toISOString(),
+    if (
+      assignment.status !==
+      DeliveryAssignmentStatus.ACCEPTED
+    ) {
+      throw new ConflictException(
+        'Only accepted assignments can mark arrival',
+      );
+    }
+
+    if (
+      assignment.delivery.status !==
+      DeliveryStatus.RIDER_ACCEPTED
+    ) {
+      throw new ConflictException(
+        'Delivery is not ready for restaurant arrival',
+      );
+    }
+
+    if (
+      assignment.rider.availability !==
+      RiderAvailability.ON_DELIVERY
+    ) {
+      throw new ConflictException(
+        'Rider must be on delivery before arrival',
+      );
+    }
+
+    const delivery = await this.prisma.$transaction(
+      async (tx) => {
+        const updatedDelivery =
+          await tx.delivery.update({
+            where: {
+              id: assignment.deliveryId,
+            },
+            data: {
+              status:
+                DeliveryStatus.ARRIVED_AT_RESTAURANT,
+            },
+          });
+
+          await tx.order.update({
+  where: {
+    id: assignment.delivery.orderId,
+  },
+  data: {
+    status: OrderStatus.DELIVERED,
+  },
+});
+
+        await tx.deliveryEvent.create({
+          data: {
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.ARRIVED,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+            },
+          },
+        });
+
+        return updatedDelivery;
       },
-    },
-  );
+    );
 
-  return delivery;
-}
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:arrived_at_restaurant',
+        status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
+        timestamp: new Date().toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          assignmentId,
+        },
+      },
+    );
+
+    return delivery;
+  }
+
+  async pickupDelivery(assignmentId: string) {
+    const assignment =
+      await this.prisma.deliveryAssignment.findUnique({
+        where: {
+          id: assignmentId,
+        },
+        include: {
+          delivery: true,
+          rider: true,
+        },
+      });
+
+    if (!assignment) {
+      throw new NotFoundException(
+        'Delivery assignment not found',
+      );
+    }
+
+    if (
+      assignment.status !==
+      DeliveryAssignmentStatus.ACCEPTED
+    ) {
+      throw new ConflictException(
+        'Only accepted assignments can pick up delivery',
+      );
+    }
+
+    if (
+      assignment.delivery.status !==
+      DeliveryStatus.ARRIVED_AT_RESTAURANT
+    ) {
+      throw new ConflictException(
+        'Delivery is not ready for pickup',
+      );
+    }
+
+    if (
+      assignment.rider.availability !==
+      RiderAvailability.ON_DELIVERY
+    ) {
+      throw new ConflictException(
+        'Rider must be on delivery before pickup',
+      );
+    }
+
+    const pickupAt = new Date();
+
+    const delivery =
+      await this.prisma.$transaction(async (tx) => {
+        const updatedDelivery =
+          await tx.delivery.update({
+            where: {
+              id: assignment.deliveryId,
+            },
+            data: {
+              status: DeliveryStatus.PICKED_UP,
+              pickupAt,
+            },
+          });
+
+        await tx.deliveryEvent.create({
+          data: {
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.PICKED_UP,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+            },
+          },
+        });
+
+        return updatedDelivery;
+      });
+
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:picked_up',
+        status: DeliveryStatus.PICKED_UP,
+        timestamp: new Date().toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          pickupAt: pickupAt.toISOString(),
+        },
+      },
+    );
+
+    return delivery;
+  }
 
   async outForDelivery(assignmentId: string) {
-  const assignment =
-    await this.prisma.deliveryAssignment.findUnique({
-      where: {
-        id: assignmentId,
-      },
-      include: {
-        delivery: true,
-        rider: true,
-      },
-    });
+    const assignment =
+      await this.prisma.deliveryAssignment.findUnique({
+        where: {
+          id: assignmentId,
+        },
+        include: {
+          delivery: true,
+          rider: true,
+        },
+      });
 
-  if (!assignment) {
-    throw new NotFoundException(
-      'Delivery assignment not found',
-    );
-  }
+    if (!assignment) {
+      throw new NotFoundException(
+        'Delivery assignment not found',
+      );
+    }
 
-  if (
-    assignment.status !==
-    DeliveryAssignmentStatus.ACCEPTED
-  ) {
-    throw new ConflictException(
-      'Only accepted assignments can go out for delivery'
-    );
-  }
+    if (
+      assignment.status !==
+      DeliveryAssignmentStatus.ACCEPTED
+    ) {
+      throw new ConflictException(
+        'Only accepted assignments can go out for delivery',
+      );
+    }
 
-  if (
-    assignment.delivery.status !==
-    DeliveryStatus.PICKED_UP
-  ) {
-    throw new ConflictException(
-      'Delivery is not ready to go out for delivery',
-    );
-  }
+    if (
+      assignment.delivery.status !==
+      DeliveryStatus.PICKED_UP
+    ) {
+      throw new ConflictException(
+        'Delivery is not ready to go out for delivery',
+      );
+    }
 
-  if (
-    assignment.rider.availability !==
-    RiderAvailability.ON_DELIVERY
-  ) {
-    throw new ConflictException(
-      'Rider must be on delivery before going out for delivery',
-    );
-  }
+    if (
+      assignment.rider.availability !==
+      RiderAvailability.ON_DELIVERY
+    ) {
+      throw new ConflictException(
+        'Rider must be on delivery before going out for delivery',
+      );
+    }
 
-  const outForDeliveryAt = new Date();
+    const outForDeliveryAt = new Date();
 
-  const delivery =
-    await this.prisma.$transaction(async (tx) => {
-      const updatedDelivery =
-        await tx.delivery.update({
-          where: {
-            id: assignment.deliveryId,
-          },
+    const delivery =
+      await this.prisma.$transaction(async (tx) => {
+        const updatedDelivery =
+          await tx.delivery.update({
+            where: {
+              id: assignment.deliveryId,
+            },
+            data: {
+              status: DeliveryStatus.OUT_FOR_DELIVERY,
+              outForDeliveryAt,
+            },
+          });
+
+        await tx.deliveryEvent.create({
           data: {
-            status: DeliveryStatus.OUT_FOR_DELIVERY,
-            outForDeliveryAt,
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.OUT_FOR_DELIVERY,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+            },
           },
         });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.OUT_FOR_DELIVERY,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
-          },
-        },
+        return updatedDelivery;
       });
 
-      return updatedDelivery;
-    });
-
-  this.realtimeService.emitToDelivery(
-    assignment.deliveryId,
-    {
-      deliveryId: assignment.deliveryId,
-      event: 'deliveryStatusChanged',
-      status: DeliveryStatus.OUT_FOR_DELIVERY,
-      timestamp: new Date().toISOString(),
-      data: {
-        riderId: assignment.riderId,
-        outForDeliveryAt:
-          outForDeliveryAt.toISOString(),
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:out_for_delivery',
+        status: DeliveryStatus.OUT_FOR_DELIVERY,
+        timestamp: new Date().toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          outForDeliveryAt:
+            outForDeliveryAt.toISOString(),
+        },
       },
-    },
-  );
-
-  return delivery;
-}
-
- async completeDelivery(assignmentId: string) {
-  const assignment =
-    await this.prisma.deliveryAssignment.findUnique({
-      where: {
-        id: assignmentId,
-      },
-      include: {
-        delivery: true,
-        rider: true,
-      },
-    });
-
-  if (!assignment) {
-    throw new NotFoundException(
-      'Delivery assignment not found',
     );
+
+    return delivery;
   }
 
-  if (
-    assignment.status !==
-    DeliveryAssignmentStatus.ACCEPTED
-  ) {
-    throw new ConflictException(
-      'Only accepted assignments can complete delivery',
-    );
-  }
-
-  if (
-    assignment.delivery.status !==
-    DeliveryStatus.OUT_FOR_DELIVERY
-  ) {
-    throw new ConflictException(
-      'Delivery is not out for delivery',
-    );
-  }
-
-  if (
-    assignment.rider.availability !==
-    RiderAvailability.ON_DELIVERY
-  ) {
-    throw new ConflictException(
-      'Rider must be on delivery before completing delivery',
-    );
-  }
-
-  const delivery = await this.prisma.$transaction(
-    async (tx) => {
-      const updatedDelivery = await tx.delivery.update({
+  async completeDelivery(assignmentId: string) {
+    const assignment =
+      await this.prisma.deliveryAssignment.findUnique({
         where: {
-          id: assignment.deliveryId,
+          id: assignmentId,
         },
-        data: {
-          status: DeliveryStatus.DELIVERED,
-          deliveredAt: new Date(),
-        },
-      });
-
-      await tx.rider.update({
-        where: {
-          id: assignment.riderId,
-        },
-        data: {
-          availability: RiderAvailability.OFFLINE,
+        include: {
+          delivery: true,
+          rider: true,
         },
       });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.DELIVERED,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
+    if (!assignment) {
+      throw new NotFoundException(
+        'Delivery assignment not found',
+      );
+    }
+
+    if (
+      assignment.status !==
+      DeliveryAssignmentStatus.ACCEPTED
+    ) {
+      throw new ConflictException(
+        'Only accepted assignments can complete delivery',
+      );
+    }
+
+    if (
+      assignment.delivery.status !==
+      DeliveryStatus.OUT_FOR_DELIVERY
+    ) {
+      throw new ConflictException(
+        'Delivery is not out for delivery',
+      );
+    }
+
+    if (
+      assignment.rider.availability !==
+      RiderAvailability.ON_DELIVERY
+    ) {
+      throw new ConflictException(
+        'Rider must be on delivery before completing delivery',
+      );
+    }
+
+    const deliveredAt = new Date();
+
+    const delivery = await this.prisma.$transaction(
+      async (tx) => {
+        const updatedDelivery =
+          await tx.delivery.update({
+            where: {
+              id: assignment.deliveryId,
+            },
+            data: {
+              status: DeliveryStatus.DELIVERED,
+              deliveredAt,
+            },
+          });
+
+        await tx.order.update({
+          where: {
+            id: assignment.delivery.orderId,
           },
+          data: {
+            status: OrderStatus.DELIVERED,
+          },
+        });
+
+        await tx.rider.update({
+          where: {
+            id: assignment.riderId,
+          },
+          data: {
+            availability: RiderAvailability.OFFLINE,
+          },
+        });
+
+        await tx.deliveryEvent.create({
+          data: {
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.DELIVERED,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+            },
+          },
+        });
+
+        return updatedDelivery;
+      },
+    );
+
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:delivered',
+        status: DeliveryStatus.DELIVERED,
+        timestamp: deliveredAt.toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          assignmentId,
+          orderStatus: OrderStatus.DELIVERED,
         },
-      });
+      },
+    );
 
-      return updatedDelivery;
-    },
-  );
-
- this.realtimeService.emitToDelivery(
-  assignment.deliveryId,
-  {
-    deliveryId: assignment.deliveryId,
-    event: 'delivery:delivered',
-    status: DeliveryStatus.DELIVERED,
-    timestamp: new Date().toISOString(),
-    data: {
-      riderId: assignment.riderId,
-      assignmentId,
-    },
-  },
-);
-
-  return delivery;
-}
+    return delivery;
+  }
 
   async failDelivery(
     assignmentId: string,
@@ -787,56 +830,73 @@ async pickupDelivery(assignmentId: string) {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const delivery = await tx.delivery.update({
-        where: {
-          id: assignment.deliveryId,
-        },
-        data: {
-          status: DeliveryStatus.FAILED,
-          failureReason: reason ?? null,
-          failedAt: new Date(),
-        },
-      });
+    const failedAt = new Date();
 
-      await tx.rider.update({
-        where: {
-          id: assignment.riderId,
-        },
-        data: {
-          availability: RiderAvailability.OFFLINE,
-        },
-      });
+    const delivery = await this.prisma.$transaction(
+      async (tx) => {
+        const updatedDelivery =
+          await tx.delivery.update({
+            where: {
+              id: assignment.deliveryId,
+            },
+            data: {
+              status: DeliveryStatus.FAILED,
+              failureReason: reason ?? null,
+              failedAt,
+            },
+          });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.FAILED,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
-            reason: reason ?? null,
+        await tx.order.update({
+          where: {
+            id: assignment.delivery.orderId,
           },
+          data: {
+            status: OrderStatus.CANCELLED,
+          },
+        });
+
+        await tx.rider.update({
+          where: {
+            id: assignment.riderId,
+          },
+          data: {
+            availability: RiderAvailability.OFFLINE,
+          },
+        });
+
+        await tx.deliveryEvent.create({
+          data: {
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.FAILED,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+              reason: reason ?? null,
+            },
+          },
+        });
+
+        return updatedDelivery;
+      },
+    );
+
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:failed',
+        status: DeliveryStatus.FAILED,
+        timestamp: failedAt.toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          assignmentId,
+          reason: reason ?? null,
+          orderStatus: OrderStatus.CANCELLED,
         },
-      });
+      },
+    );
 
-      this.realtimeService.emitToDelivery(
-  assignment.deliveryId,
-  {
-    deliveryId: assignment.deliveryId,
-    event: 'delivery:failed',
-    status: DeliveryStatus.FAILED,
-    timestamp: new Date().toISOString(),
-    data: {
-      riderId: assignment.riderId,
-      assignmentId,
-      reason: reason ?? null,
-    },
-  },
-);
-
-      return delivery;
-    });
+    return delivery;
   }
 
   async cancelDelivery(
@@ -882,55 +942,72 @@ async pickupDelivery(assignmentId: string) {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const delivery = await tx.delivery.update({
-        where: {
-          id: assignment.deliveryId,
-        },
-        data: {
-          status: DeliveryStatus.CANCELLED,
-          cancellationReason: reason ?? null,
-          cancelledAt: new Date(),
-        },
-      });
+    const cancelledAt = new Date();
 
-      await tx.rider.update({
-        where: {
-          id: assignment.riderId,
-        },
-        data: {
-          availability: RiderAvailability.OFFLINE,
-        },
-      });
+    const delivery = await this.prisma.$transaction(
+      async (tx) => {
+        const updatedDelivery =
+          await tx.delivery.update({
+            where: {
+              id: assignment.deliveryId,
+            },
+            data: {
+              status: DeliveryStatus.CANCELLED,
+              cancellationReason: reason ?? null,
+              cancelledAt,
+            },
+          });
 
-      await tx.deliveryEvent.create({
-        data: {
-          deliveryId: assignment.deliveryId,
-          type: DeliveryEventType.CANCELLED,
-          metadata: {
-            riderId: assignment.riderId,
-            assignmentId,
-            reason: reason ?? null,
+        await tx.order.update({
+          where: {
+            id: assignment.delivery.orderId,
           },
+          data: {
+            status: OrderStatus.CANCELLED,
+          },
+        });
+
+        await tx.rider.update({
+          where: {
+            id: assignment.riderId,
+          },
+          data: {
+            availability: RiderAvailability.OFFLINE,
+          },
+        });
+
+        await tx.deliveryEvent.create({
+          data: {
+            deliveryId: assignment.deliveryId,
+            type: DeliveryEventType.CANCELLED,
+            metadata: {
+              riderId: assignment.riderId,
+              assignmentId,
+              reason: reason ?? null,
+            },
+          },
+        });
+
+        return updatedDelivery;
+      },
+    );
+
+    this.realtimeService.emitToDelivery(
+      assignment.deliveryId,
+      {
+        deliveryId: assignment.deliveryId,
+        event: 'delivery:cancelled',
+        status: DeliveryStatus.CANCELLED,
+        timestamp: cancelledAt.toISOString(),
+        data: {
+          riderId: assignment.riderId,
+          assignmentId,
+          reason: reason ?? null,
+          orderStatus: OrderStatus.CANCELLED,
         },
-      });
+      },
+    );
 
-      this.realtimeService.emitToDelivery(
-  assignment.deliveryId,
-  {
-    deliveryId: assignment.deliveryId,
-    event: 'delivery:cancelled',
-    status: DeliveryStatus.CANCELLED,
-    timestamp: new Date().toISOString(),
-    data: {
-      riderId: assignment.riderId,
-      assignmentId,
-      reason: reason ?? null,
-    },
-  },
-);
-
-      return delivery;
-    });
+    return delivery;
   }
 }

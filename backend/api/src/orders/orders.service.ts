@@ -16,14 +16,16 @@ import {
 import { PricingService } from '../pricing/pricing.service';
 import { OrderStateMachineService } from './order-state-machine.service';
 import { PaymentsService } from '../payments/payments.service';
+import { DeliveryService } from '../delivery/delivery/delivery.service';
 
 @Injectable()
 export class OrdersService {
-  constructor(
+constructor(
   private readonly prisma: PrismaService,
   private readonly pricingService: PricingService,
   private readonly orderStateMachine: OrderStateMachineService,
   private readonly paymentsService: PaymentsService,
+  private readonly deliveryService: DeliveryService,
 ) {}
 
 async createOrder(userId: string, dto: CreateOrderDto) {
@@ -411,12 +413,18 @@ if (!restaurantAllowedNextStatuses.includes(dto.status)) {
     dto.status,
   );
 
-  return this.prisma.order.update({
-    where: { id: orderId },
-    data: {
-      status: dto.status,
-    },
-  });
+const updatedOrder = await this.prisma.order.update({
+  where: { id: orderId },
+  data: {
+    status: dto.status,
+  },
+});
+
+if (dto.status === OrderStatus.READY) {
+  await this.deliveryService.createDelivery(orderId);
+}
+
+return updatedOrder;
 }
 
 async acceptOrder(userId: string, orderId: string) {
