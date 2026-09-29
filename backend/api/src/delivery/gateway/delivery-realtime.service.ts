@@ -29,4 +29,18 @@ export class DeliveryRealtimeService {
       .to(`delivery:${deliveryId}`)
       .emit(event.event, event);
   }
+
+  emitDeliveryStatusChanged(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToDelivery(deliveryId, {
+      deliveryId,
+      event: 'delivery:statusChanged',
+      status,
+      timestamp: new Date().toISOString(),
+      data,
+    });
+  }
 }

@@ -641,53 +641,54 @@ async pickupDelivery(assignmentId: string) {
   return delivery;
 }
 
-  async completeDelivery(assignmentId: string) {
-    const assignment =
-      await this.prisma.deliveryAssignment.findUnique({
-        where: {
-          id: assignmentId,
-        },
-        include: {
-          delivery: true,
-          rider: true,
-        },
-      });
+ async completeDelivery(assignmentId: string) {
+  const assignment =
+    await this.prisma.deliveryAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        delivery: true,
+        rider: true,
+      },
+    });
 
-    if (!assignment) {
-      throw new NotFoundException(
-        'Delivery assignment not found',
-      );
-    }
+  if (!assignment) {
+    throw new NotFoundException(
+      'Delivery assignment not found',
+    );
+  }
 
-    if (
-      assignment.status !==
-      DeliveryAssignmentStatus.ACCEPTED
-    ) {
-      throw new ConflictException(
-        'Only accepted assignments can complete delivery',
-      );
-    }
+  if (
+    assignment.status !==
+    DeliveryAssignmentStatus.ACCEPTED
+  ) {
+    throw new ConflictException(
+      'Only accepted assignments can complete delivery',
+    );
+  }
 
-    if (
-      assignment.delivery.status !==
-      DeliveryStatus.OUT_FOR_DELIVERY
-    ) {
-      throw new ConflictException(
-        'Delivery is not out for delivery',
-      );
-    }
+  if (
+    assignment.delivery.status !==
+    DeliveryStatus.OUT_FOR_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Delivery is not out for delivery',
+    );
+  }
 
-    if (
-      assignment.rider.availability !==
-      RiderAvailability.ON_DELIVERY
-    ) {
-      throw new ConflictException(
-        'Rider must be on delivery before completing delivery',
-      );
-    }
+  if (
+    assignment.rider.availability !==
+    RiderAvailability.ON_DELIVERY
+  ) {
+    throw new ConflictException(
+      'Rider must be on delivery before completing delivery',
+    );
+  }
 
-    return this.prisma.$transaction(async (tx) => {
-      const delivery = await tx.delivery.update({
+  const delivery = await this.prisma.$transaction(
+    async (tx) => {
+      const updatedDelivery = await tx.delivery.update({
         where: {
           id: assignment.deliveryId,
         },
@@ -717,9 +718,26 @@ async pickupDelivery(assignmentId: string) {
         },
       });
 
-      return delivery;
-    });
-  }
+      return updatedDelivery;
+    },
+  );
+
+ this.realtimeService.emitToDelivery(
+  assignment.deliveryId,
+  {
+    deliveryId: assignment.deliveryId,
+    event: 'delivery:delivered',
+    status: DeliveryStatus.DELIVERED,
+    timestamp: new Date().toISOString(),
+    data: {
+      riderId: assignment.riderId,
+      assignmentId,
+    },
+  },
+);
+
+  return delivery;
+}
 
   async failDelivery(
     assignmentId: string,
@@ -802,6 +820,21 @@ async pickupDelivery(assignmentId: string) {
         },
       });
 
+      this.realtimeService.emitToDelivery(
+  assignment.deliveryId,
+  {
+    deliveryId: assignment.deliveryId,
+    event: 'delivery:failed',
+    status: DeliveryStatus.FAILED,
+    timestamp: new Date().toISOString(),
+    data: {
+      riderId: assignment.riderId,
+      assignmentId,
+      reason: reason ?? null,
+    },
+  },
+);
+
       return delivery;
     });
   }
@@ -881,6 +914,21 @@ async pickupDelivery(assignmentId: string) {
           },
         },
       });
+
+      this.realtimeService.emitToDelivery(
+  assignment.deliveryId,
+  {
+    deliveryId: assignment.deliveryId,
+    event: 'delivery:cancelled',
+    status: DeliveryStatus.CANCELLED,
+    timestamp: new Date().toISOString(),
+    data: {
+      riderId: assignment.riderId,
+      assignmentId,
+      reason: reason ?? null,
+    },
+  },
+);
 
       return delivery;
     });
