@@ -97,4 +97,105 @@ export class RealtimeService {
       }),
     };
   }
+
+    emitOrderStatusChanged(
+    orderId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToOrder(
+      orderId,
+      this.createEvent('order:statusChanged', {
+        status,
+        data,
+      }),
+    );
+  }
+
+  emitOrderUpdated(
+    orderId: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToOrder(
+      orderId,
+      this.createEvent('order:updated', {
+        data,
+      }),
+    );
+  }
+
+  emitDeliveryStatusChanged(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToDelivery(
+      deliveryId,
+      this.createEvent('delivery:statusChanged', {
+        status,
+        data,
+      }),
+    );
+  }
+
+  emitDeliveryUpdated(
+    deliveryId: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToDelivery(
+      deliveryId,
+      this.createEvent('delivery:updated', {
+        data,
+      }),
+    );
+  }
+
+  emitRestaurantOrderReceived(
+    restaurantId: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToRestaurant(
+      restaurantId,
+      this.createEvent('restaurant:orderReceived', {
+        data,
+      }),
+    );
+  }
+
+  emitRestaurantOrderUpdated(
+    restaurantId: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToRestaurant(
+      restaurantId,
+      this.createEvent('restaurant:orderUpdated', {
+        data,
+      }),
+    );
+  }
+
+  emitRiderDeliveryAssigned(
+    riderId: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToRider(
+      riderId,
+      this.createEvent('rider:deliveryAssigned', {
+        data,
+      }),
+    );
+  }
+
+  emitCustomerOrderUpdated(
+    customerId: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitToCustomer(
+      customerId,
+      this.createEvent('customer:orderUpdated', {
+        data,
+      }),
+    );
+  }
+  
 }
