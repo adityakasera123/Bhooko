@@ -41,8 +41,16 @@ type TransactionMock = MockFn;
 describe('AssignmentService', () => {
   let service: AssignmentService;
   let realtimeService: {
-  emitToDelivery: jest.Mock;
-};
+    emitDeliveryRiderAssigned: jest.Mock;
+    emitDeliveryRiderAccepted: jest.Mock;
+    emitDeliveryAssignmentRejected: jest.Mock;
+    emitDeliveryArrivedAtRestaurant: jest.Mock;
+    emitDeliveryPickedUp: jest.Mock;
+    emitDeliveryOutForDelivery: jest.Mock;
+    emitDeliveryDelivered: jest.Mock;
+    emitDeliveryFailed: jest.Mock;
+    emitDeliveryCancelled: jest.Mock;
+  };
 
   const deliveryId = 'delivery-1';
   const riderId = 'rider-1';
@@ -91,9 +99,17 @@ describe('AssignmentService', () => {
         return callback(txMock);
       },
     );
-realtimeService = {
-    emitToDelivery: jest.fn(),
-  };
+    realtimeService = {
+      emitDeliveryRiderAssigned: jest.fn(),
+      emitDeliveryRiderAccepted: jest.fn(),
+      emitDeliveryAssignmentRejected: jest.fn(),
+      emitDeliveryArrivedAtRestaurant: jest.fn(),
+      emitDeliveryPickedUp: jest.fn(),
+      emitDeliveryOutForDelivery: jest.fn(),
+      emitDeliveryDelivered: jest.fn(),
+      emitDeliveryFailed: jest.fn(),
+      emitDeliveryCancelled: jest.fn(),
+    };
    service = new AssignmentService(
   prismaMock as unknown as PrismaService,
 realtimeService as unknown as RealtimeService,
