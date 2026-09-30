@@ -3,7 +3,9 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -57,4 +59,10 @@ export class CreateRestaurantDto {
   @MinLength(6)
   @MaxLength(10)
   pincode!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  @Max(50)
+  deliveryRadiusKm?: number;
 }

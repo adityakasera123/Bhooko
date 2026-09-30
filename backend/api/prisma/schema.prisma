@@ -196,24 +196,25 @@ model RefreshToken {
 }
 
 model Restaurant {
-  id           String           @id @default(uuid())
-  ownerId      String
-  name         String
-  description  String
-  imageUrl     String
-  latitude     Float
-  longitude    Float
-  addressLine1 String
-  addressLine2 String?
-  area         String
-  city         String
-  state        String
-  pincode      String
-  status       RestaurantStatus
-  rating       Float            @default(0)
-  reviewCount  Int              @default(0)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id               String           @id @default(uuid())
+  ownerId          String
+  name             String
+  description      String
+  imageUrl         String
+  latitude         Float
+  longitude        Float
+  addressLine1     String
+  addressLine2     String?
+  area             String
+  city             String
+  state            String
+  pincode          String
+  deliveryRadiusKm Float            @default(5)
+  status           RestaurantStatus
+  rating           Float            @default(0)
+  reviewCount      Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   owner       User           @relation(fields: [ownerId], references: [id])
   categories  FoodCategory[]

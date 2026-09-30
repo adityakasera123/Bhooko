@@ -31,6 +31,7 @@ export class RestaurantsService {
         state: data.state,
         pincode: data.pincode,
         status: 'CLOSED',
+        deliveryRadiusKm: data.deliveryRadiusKm,
       },
     });
   }
@@ -159,6 +160,9 @@ async updateRestaurant(
       ...(data.pincode !== undefined && {
         pincode: data.pincode,
       }),
+      ...(data.deliveryRadiusKm !== undefined && {
+  deliveryRadiusKm: data.deliveryRadiusKm,
+}),
     },
   });
 }
