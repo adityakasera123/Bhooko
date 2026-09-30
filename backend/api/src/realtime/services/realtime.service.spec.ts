@@ -174,4 +174,276 @@ describe('RealtimeService', () => {
       expect.any(String),
     );
   });
+
+  it('should emit an order status changed event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitOrderStatusChanged(
+      'order-1',
+      'CONFIRMED',
+      {
+        source: 'order-service',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'order:order-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'order:statusChanged',
+      expect.objectContaining({
+        event: 'order:statusChanged',
+        status: 'CONFIRMED',
+        data: {
+          source: 'order-service',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit an order updated event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitOrderUpdated(
+      'order-1',
+      {
+        itemCount: 3,
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'order:order-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'order:updated',
+      expect.objectContaining({
+        event: 'order:updated',
+        data: {
+          itemCount: 3,
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit a delivery status changed event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitDeliveryStatusChanged(
+      'delivery-1',
+      'OUT_FOR_DELIVERY',
+      {
+        riderId: 'rider-1',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'delivery:delivery-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'delivery:statusChanged',
+      expect.objectContaining({
+        event: 'delivery:statusChanged',
+        status: 'OUT_FOR_DELIVERY',
+        data: {
+          riderId: 'rider-1',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit a delivery updated event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitDeliveryUpdated(
+      'delivery-1',
+      {
+        eta: '20 minutes',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'delivery:delivery-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'delivery:updated',
+      expect.objectContaining({
+        event: 'delivery:updated',
+        data: {
+          eta: '20 minutes',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit a restaurant order received event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitRestaurantOrderReceived(
+      'restaurant-1',
+      {
+        orderId: 'order-1',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'restaurant:restaurant-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'restaurant:orderReceived',
+      expect.objectContaining({
+        event: 'restaurant:orderReceived',
+        data: {
+          orderId: 'order-1',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit a restaurant order updated event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitRestaurantOrderUpdated(
+      'restaurant-1',
+      {
+        orderId: 'order-1',
+        status: 'PREPARING',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'restaurant:restaurant-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'restaurant:orderUpdated',
+      expect.objectContaining({
+        event: 'restaurant:orderUpdated',
+        data: {
+          orderId: 'order-1',
+          status: 'PREPARING',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit a rider delivery assigned event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitRiderDeliveryAssigned(
+      'rider-1',
+      {
+        deliveryId: 'delivery-1',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'rider:rider-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'rider:deliveryAssigned',
+      expect.objectContaining({
+        event: 'rider:deliveryAssigned',
+        data: {
+          deliveryId: 'delivery-1',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('should emit a customer order updated event', () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({
+      emit,
+    });
+
+    service.setServer({
+      to,
+    } as any);
+
+    service.emitCustomerOrderUpdated(
+      'customer-1',
+      {
+        orderId: 'order-1',
+        status: 'READY',
+      },
+    );
+
+    expect(to).toHaveBeenCalledWith(
+      'customer:customer-1',
+    );
+
+    expect(emit).toHaveBeenCalledWith(
+      'customer:orderUpdated',
+      expect.objectContaining({
+        event: 'customer:orderUpdated',
+        data: {
+          orderId: 'order-1',
+          status: 'READY',
+        },
+        timestamp: expect.any(String),
+      }),
+    );
+  });
 });

@@ -17,6 +17,7 @@ import { PricingService } from '../pricing/pricing.service';
 import { OrderStateMachineService } from './order-state-machine.service';
 import { PaymentsService } from '../payments/payments.service';
 import { DeliveryService } from '../delivery/delivery/delivery.service';
+import { RealtimeService } from '../realtime/services/realtime.service';
 
 @Injectable()
 export class OrdersService {
@@ -26,6 +27,7 @@ constructor(
   private readonly orderStateMachine: OrderStateMachineService,
   private readonly paymentsService: PaymentsService,
   private readonly deliveryService: DeliveryService,
+  private readonly realtimeService: RealtimeService,
 ) {}
 
 async createOrder(userId: string, dto: CreateOrderDto) {
@@ -204,6 +206,26 @@ totalInPaise: pricing.totalInPaise,
         cartId: cart.id,
       },
     });
+
+    for (const order of createdOrders) {
+  this.realtimeService.emitRestaurantOrderReceived(
+    order.restaurantId,
+    {
+      orderId: order.id,
+      customerId: userId,
+      status: order.status,
+    },
+  );
+
+  this.realtimeService.emitCustomerOrderUpdated(
+    userId,
+    {
+      orderId: order.id,
+      restaurantId: order.restaurantId,
+      status: order.status,
+    },
+  );
+}
 
     return {
       message: 'Order created successfully',
@@ -424,6 +446,32 @@ if (dto.status === OrderStatus.READY) {
   await this.deliveryService.createDelivery(orderId);
 }
 
+this.realtimeService.emitOrderStatusChanged(
+  updatedOrder.id,
+  updatedOrder.status,
+  {
+    orderId: updatedOrder.id,
+    restaurantId: updatedOrder.restaurantId,
+    customerId: updatedOrder.customerId,
+  },
+);
+
+this.realtimeService.emitRestaurantOrderUpdated(
+  updatedOrder.restaurantId,
+  {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+  },
+);
+
+this.realtimeService.emitCustomerOrderUpdated(
+  updatedOrder.customerId,
+  {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+  },
+);
+
 return updatedOrder;
 }
 
@@ -455,14 +503,42 @@ async acceptOrder(userId: string, orderId: string) {
     'CONFIRMED',
   );
 
-  return this.prisma.order.update({
-    where: {
-      id: orderId,
-    },
-    data: {
-      status: 'CONFIRMED',
-    },
-  });
+  const updatedOrder = await this.prisma.order.update({
+  where: {
+    id: orderId,
+  },
+  data: {
+    status: 'CONFIRMED',
+  },
+});
+
+this.realtimeService.emitOrderStatusChanged(
+  updatedOrder.id,
+  updatedOrder.status,
+  {
+    orderId: updatedOrder.id,
+    restaurantId: updatedOrder.restaurantId,
+    customerId: updatedOrder.customerId,
+  },
+);
+
+this.realtimeService.emitRestaurantOrderUpdated(
+  updatedOrder.restaurantId,
+  {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+  },
+);
+
+this.realtimeService.emitCustomerOrderUpdated(
+  updatedOrder.customerId,
+  {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+  },
+);
+
+return updatedOrder;
 }
 
 async rejectOrder(userId: string, orderId: string) {
@@ -535,18 +611,72 @@ async rejectOrder(userId: string, orderId: string) {
   });
 
   if (result.refundReservation) {
-    const refund =
-      await this.paymentsService.executeReservedRefund(
-        result.refundReservation.id,
-      );
+  const refund =
+    await this.paymentsService.executeReservedRefund(
+      result.refundReservation.id,
+    );
 
-    return {
-      ...result.order,
-      refund,
-    };
-  }
+  this.realtimeService.emitOrderStatusChanged(
+    result.order.id,
+    result.order.status,
+    {
+      orderId: result.order.id,
+      restaurantId: result.order.restaurantId,
+      customerId: result.order.customerId,
+      cancellationSource: result.order.cancellationSource,
+    },
+  );
 
-  return result.order;
+  this.realtimeService.emitRestaurantOrderUpdated(
+    result.order.restaurantId,
+    {
+      orderId: result.order.id,
+      status: result.order.status,
+    },
+  );
+
+  this.realtimeService.emitCustomerOrderUpdated(
+    result.order.customerId,
+    {
+      orderId: result.order.id,
+      status: result.order.status,
+    },
+  );
+
+  return {
+    ...result.order,
+    refund,
+  };
+}
+
+this.realtimeService.emitOrderStatusChanged(
+  result.order.id,
+  result.order.status,
+  {
+    orderId: result.order.id,
+    restaurantId: result.order.restaurantId,
+    customerId: result.order.customerId,
+    cancellationSource: result.order.cancellationSource,
+  },
+);
+
+this.realtimeService.emitRestaurantOrderUpdated(
+  result.order.restaurantId,
+  {
+    orderId: result.order.id,
+    status: result.order.status,
+  },
+);
+
+this.realtimeService.emitCustomerOrderUpdated(
+  result.order.customerId,
+  {
+    orderId: result.order.id,
+    status: result.order.status,
+  },
+);
+
+return result.order;
 }
 
 async cancelOrder(userId: string, orderId: string) {
@@ -566,7 +696,7 @@ async cancelOrder(userId: string, orderId: string) {
     'CANCELLED',
   );
 
-  return this.prisma.order.update({
+  const updatedOrder = await this.prisma.order.update({
   where: {
     id: orderId,
   },
@@ -575,6 +705,37 @@ async cancelOrder(userId: string, orderId: string) {
     cancellationSource: 'CUSTOMER',
   },
 });
+
+this.realtimeService.emitOrderStatusChanged(
+  updatedOrder.id,
+  updatedOrder.status,
+  {
+    orderId: updatedOrder.id,
+    restaurantId: updatedOrder.restaurantId,
+    customerId: updatedOrder.customerId,
+    cancellationSource: updatedOrder.cancellationSource,
+  },
+);
+
+this.realtimeService.emitRestaurantOrderUpdated(
+  updatedOrder.restaurantId,
+  {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+    cancellationSource: updatedOrder.cancellationSource,
+  },
+);
+
+this.realtimeService.emitCustomerOrderUpdated(
+  updatedOrder.customerId,
+  {
+    orderId: updatedOrder.id,
+    status: updatedOrder.status,
+    cancellationSource: updatedOrder.cancellationSource,
+  },
+);
+
+return updatedOrder;
 }
 
 }

@@ -8,6 +8,7 @@ import { DeliveryModule } from '../delivery/delivery/delivery.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderStateMachineService } from './order-state-machine.service';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { OrderStateMachineService } from './order-state-machine.service';
     PricingModule,
     PaymentsModule,
     DeliveryModule,
+    RealtimeModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrderStateMachineService],
