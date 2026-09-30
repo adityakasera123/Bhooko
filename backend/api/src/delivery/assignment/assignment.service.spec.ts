@@ -13,7 +13,7 @@ import {
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { AssignmentService } from './assignment.service';
-import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
+import { RealtimeService } from '../../realtime/services/realtime.service';
 
 type MockFn = jest.MockedFunction<any>;
 
@@ -96,7 +96,7 @@ realtimeService = {
   };
    service = new AssignmentService(
   prismaMock as unknown as PrismaService,
-  realtimeService as unknown as DeliveryRealtimeService,
+realtimeService as unknown as RealtimeService,
 );
   });
 

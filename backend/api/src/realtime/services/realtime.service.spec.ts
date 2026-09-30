@@ -42,9 +42,12 @@ describe('RealtimeService', () => {
       'delivery:delivery-1',
     );
     expect(emit).toHaveBeenCalledWith(
-      'delivery:test',
-      event,
-    );
+  'delivery:test',
+  {
+    ...event,
+    deliveryId: 'delivery-1',
+  },
+);
   });
 
   it('should emit to an order room', () => {

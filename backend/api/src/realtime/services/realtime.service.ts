@@ -2,68 +2,83 @@ import { Injectable } from '@nestjs/common';
 import { Server } from 'socket.io';
 
 export interface RealtimeEvent {
+  deliveryId?: string;
   event: string;
   timestamp: string;
   status?: string;
   data?: Record<string, unknown>;
 }
 
+type LegacyDeliveryEmitter = (
+  deliveryId: string,
+  event: RealtimeEvent,
+) => void;
+
 @Injectable()
 export class RealtimeService {
   private server?: Server;
 
+  private legacyDeliveryEmitter?: LegacyDeliveryEmitter;
+
   setServer(server: Server): void {
     this.server = server;
+  }
+
+  setLegacyDeliveryEmitter(
+    emitter: LegacyDeliveryEmitter,
+  ): void {
+    this.legacyDeliveryEmitter = emitter;
   }
 
   emitToDelivery(
     deliveryId: string,
     event: RealtimeEvent,
   ): void {
-    this.emitToRoom(
-      `delivery:${deliveryId}`,
-      event,
-    );
+    const realtimeEvent: RealtimeEvent = {
+      ...event,
+      deliveryId,
+    };
+
+    if (this.server) {
+      this.server
+        .to(`delivery:${deliveryId}`)
+        .emit(realtimeEvent.event, realtimeEvent);
+    }
+
+    if (this.legacyDeliveryEmitter) {
+      this.legacyDeliveryEmitter(
+        deliveryId,
+        realtimeEvent,
+      );
+    }
   }
 
   emitToOrder(
     orderId: string,
     event: RealtimeEvent,
   ): void {
-    this.emitToRoom(
-      `order:${orderId}`,
-      event,
-    );
+    this.emitToRoom(`order:${orderId}`, event);
   }
 
   emitToRestaurant(
     restaurantId: string,
     event: RealtimeEvent,
   ): void {
-    this.emitToRoom(
-      `restaurant:${restaurantId}`,
-      event,
-    );
+    this.emitToRoom(`restaurant:${restaurantId}`, event);
   }
 
   emitToRider(
     riderId: string,
     event: RealtimeEvent,
   ): void {
-    this.emitToRoom(
-      `rider:${riderId}`,
-      event,
-    );
+    this.emitToRoom(`rider:${riderId}`, event);
   }
 
   emitToCustomer(
     customerId: string,
     event: RealtimeEvent,
   ): void {
-    this.emitToRoom(
-      `customer:${customerId}`,
-      event,
-    );
+    this.emitToRoom(`customer:${customerId}`, event);
   }
 
   emitToRoom(
@@ -74,9 +89,7 @@ export class RealtimeService {
       return;
     }
 
-    this.server
-      .to(room)
-      .emit(event.event, event);
+    this.server.to(room).emit(event.event, event);
   }
 
   createEvent(
@@ -98,17 +111,139 @@ export class RealtimeService {
     };
   }
 
-    emitOrderStatusChanged(
+  emitDeliveryEvent(
+    deliveryId: string,
+    event: string,
+    options?: {
+      status?: string;
+      data?: Record<string, unknown>;
+    },
+  ): void {
+    this.emitToDelivery(
+      deliveryId,
+      this.createEvent(event, options),
+    );
+  }
+
+  emitDeliveryRiderAssigned(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:rider_assigned',
+      { status, data },
+    );
+  }
+
+  emitDeliveryRiderAccepted(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:rider_accepted',
+      { status, data },
+    );
+  }
+
+  emitDeliveryAssignmentRejected(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:assignment_rejected',
+      { status, data },
+    );
+  }
+
+  emitDeliveryArrivedAtRestaurant(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:arrived_at_restaurant',
+      { status, data },
+    );
+  }
+
+  emitDeliveryPickedUp(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:picked_up',
+      { status, data },
+    );
+  }
+
+  emitDeliveryOutForDelivery(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:out_for_delivery',
+      { status, data },
+    );
+  }
+
+  emitDeliveryDelivered(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:delivered',
+      { status, data },
+    );
+  }
+
+  emitDeliveryFailed(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:failed',
+      { status, data },
+    );
+  }
+
+  emitDeliveryCancelled(
+    deliveryId: string,
+    status: string,
+    data?: Record<string, unknown>,
+  ): void {
+    this.emitDeliveryEvent(
+      deliveryId,
+      'delivery:cancelled',
+      { status, data },
+    );
+  }
+
+  emitOrderStatusChanged(
     orderId: string,
     status: string,
     data?: Record<string, unknown>,
   ): void {
     this.emitToOrder(
       orderId,
-      this.createEvent('order:statusChanged', {
-        status,
-        data,
-      }),
+      this.createEvent(
+        'order:statusChanged',
+        { status, data },
+      ),
     );
   }
 
@@ -118,9 +253,7 @@ export class RealtimeService {
   ): void {
     this.emitToOrder(
       orderId,
-      this.createEvent('order:updated', {
-        data,
-      }),
+      this.createEvent('order:updated', { data }),
     );
   }
 
@@ -129,12 +262,10 @@ export class RealtimeService {
     status: string,
     data?: Record<string, unknown>,
   ): void {
-    this.emitToDelivery(
+    this.emitDeliveryEvent(
       deliveryId,
-      this.createEvent('delivery:statusChanged', {
-        status,
-        data,
-      }),
+      'delivery:statusChanged',
+      { status, data },
     );
   }
 
@@ -142,11 +273,10 @@ export class RealtimeService {
     deliveryId: string,
     data?: Record<string, unknown>,
   ): void {
-    this.emitToDelivery(
+    this.emitDeliveryEvent(
       deliveryId,
-      this.createEvent('delivery:updated', {
-        data,
-      }),
+      'delivery:updated',
+      { data },
     );
   }
 
@@ -156,9 +286,10 @@ export class RealtimeService {
   ): void {
     this.emitToRestaurant(
       restaurantId,
-      this.createEvent('restaurant:orderReceived', {
-        data,
-      }),
+      this.createEvent(
+        'restaurant:orderReceived',
+        { data },
+      ),
     );
   }
 
@@ -168,9 +299,10 @@ export class RealtimeService {
   ): void {
     this.emitToRestaurant(
       restaurantId,
-      this.createEvent('restaurant:orderUpdated', {
-        data,
-      }),
+      this.createEvent(
+        'restaurant:orderUpdated',
+        { data },
+      ),
     );
   }
 
@@ -180,9 +312,10 @@ export class RealtimeService {
   ): void {
     this.emitToRider(
       riderId,
-      this.createEvent('rider:deliveryAssigned', {
-        data,
-      }),
+      this.createEvent(
+        'rider:deliveryAssigned',
+        { data },
+      ),
     );
   }
 
@@ -192,10 +325,10 @@ export class RealtimeService {
   ): void {
     this.emitToCustomer(
       customerId,
-      this.createEvent('customer:orderUpdated', {
-        data,
-      }),
+      this.createEvent(
+        'customer:orderUpdated',
+        { data },
+      ),
     );
   }
-  
 }

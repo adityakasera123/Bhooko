@@ -14,13 +14,13 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
-import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
+import { RealtimeService } from '../../realtime/services/realtime.service';
 
 @Injectable()
 export class AssignmentService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly realtimeService: DeliveryRealtimeService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async assignRider(
