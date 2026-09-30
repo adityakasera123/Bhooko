@@ -775,6 +775,38 @@ describe('OrdersService', () => {
   status: UpdateOrderStatus.CONFIRMED,
 } satisfies UpdateOrderStatusDto
     );
+    
+    expect(
+  realtimeServiceMock.emitOrderStatusChanged,
+).toHaveBeenCalledWith(
+  'order-1',
+  'CONFIRMED',
+  {
+    orderId: 'order-1',
+    restaurantId: 'restaurant-1',
+    customerId: 'customer-1',
+  },
+);
+
+expect(
+  realtimeServiceMock.emitRestaurantOrderUpdated,
+).toHaveBeenCalledWith(
+  'restaurant-1',
+  {
+    orderId: 'order-1',
+    status: 'CONFIRMED',
+  },
+);
+
+expect(
+  realtimeServiceMock.emitCustomerOrderUpdated,
+).toHaveBeenCalledWith(
+  'customer-1',
+  {
+    orderId: 'order-1',
+    status: 'CONFIRMED',
+  },
+);
 
     expect(
       prismaMock.restaurant.findUnique,
@@ -965,10 +997,44 @@ it('should not allow restaurant owner to cancel an order through the generic sta
     }),
   };
 
+  
   const result = await service.acceptOrder(
     'restaurant-owner-1',
     'order-6',
   );
+
+  expect(
+  realtimeServiceMock.emitOrderStatusChanged,
+).toHaveBeenCalledWith(
+  'order-6',
+  'CONFIRMED',
+  {
+    orderId: 'order-6',
+    restaurantId: 'restaurant-1',
+    customerId: 'customer-1',
+  },
+);
+
+expect(
+  realtimeServiceMock.emitRestaurantOrderUpdated,
+).toHaveBeenCalledWith(
+  'restaurant-1',
+  {
+    orderId: 'order-6',
+    status: 'CONFIRMED',
+  },
+);
+
+expect(
+  realtimeServiceMock.emitCustomerOrderUpdated,
+).toHaveBeenCalledWith(
+  'customer-1',
+  {
+    orderId: 'order-6',
+    status: 'CONFIRMED',
+  },
+);
+
 
   expect(
     orderStateMachineMock.assertTransitionAllowed,
@@ -1010,9 +1076,12 @@ it('should not allow restaurant owner to cancel an order through the generic sta
           },
         }),
         update: mockResolved({
-          id: 'order-1',
-          status: 'CANCELLED',
-        }),
+  id: 'order-1',
+  restaurantId: 'restaurant-1',
+  customerId: 'customer-1',
+  status: 'CANCELLED',
+  cancellationSource: 'RESTAURANT',
+}),
       },
       restaurant: {
         findUnique: mockResolved({
@@ -1052,9 +1121,12 @@ it('should not allow restaurant owner to cancel an order through the generic sta
     ).not.toHaveBeenCalled();
 
     expect(result).toEqual({
-      id: 'order-1',
-      status: 'CANCELLED',
-    });
+  id: 'order-1',
+  restaurantId: 'restaurant-1',
+  customerId: 'customer-1',
+  status: 'CANCELLED',
+  cancellationSource: 'RESTAURANT',
+});
   });
 
   it('should reject a paid restaurant order and execute an order-specific refund', async () => {
@@ -1063,6 +1135,7 @@ it('should not allow restaurant owner to cancel an order through the generic sta
         findUnique: mockResolved({
           id: 'order-1',
           restaurantId: 'restaurant-1',
+          customerId: 'customer-1',
           status: 'CREATED',
           totalInPaise: 18000,
           paymentTransaction: {
@@ -1071,9 +1144,12 @@ it('should not allow restaurant owner to cancel an order through the generic sta
           },
         }),
         update: mockResolved({
-          id: 'order-1',
-          status: 'CANCELLED',
-        }),
+  id: 'order-1',
+  restaurantId: 'restaurant-1',
+  customerId: 'customer-1',
+  status: 'CANCELLED',
+  cancellationSource: 'RESTAURANT',
+}),
       },
       restaurant: {
         findUnique: mockResolved({
@@ -1117,6 +1193,39 @@ it('should not allow restaurant owner to cancel an order through the generic sta
       'order-1',
     );
 
+   expect(
+  realtimeServiceMock.emitOrderStatusChanged,
+).toHaveBeenCalledWith(
+  'order-1',
+  'CANCELLED',
+  {
+    orderId: 'order-1',
+    restaurantId: 'restaurant-1',
+    customerId: 'customer-1',
+    cancellationSource: 'RESTAURANT',
+  },
+);
+
+expect(
+  realtimeServiceMock.emitRestaurantOrderUpdated,
+).toHaveBeenCalledWith(
+  'restaurant-1',
+  {
+    orderId: 'order-1',
+    status: 'CANCELLED',
+  },
+);
+
+expect(
+  realtimeServiceMock.emitCustomerOrderUpdated,
+).toHaveBeenCalledWith(
+  'customer-1',
+  {
+    orderId: 'order-1',
+    status: 'CANCELLED',
+  },
+);
+
     expect(
       service['paymentsService']
         .reserveRefundInTransaction,
@@ -1147,10 +1256,13 @@ it('should not allow restaurant owner to cancel an order through the generic sta
     ).toHaveBeenCalledWith('refund-1');
 
     expect(result).toEqual({
-      id: 'order-1',
-      status: 'CANCELLED',
-      refund: processedRefund,
-    });
+  id: 'order-1',
+  restaurantId: 'restaurant-1',
+  customerId: 'customer-1',
+  status: 'CANCELLED',
+  cancellationSource: 'RESTAURANT',
+  refund: processedRefund,
+});
   });
 
   it('should reject when the order does not exist', async () => {
