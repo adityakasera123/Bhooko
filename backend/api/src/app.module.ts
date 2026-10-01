@@ -18,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DeliveryModule } from './delivery/delivery/delivery.module';
+import { ServiceabilityModule } from './serviceability/serviceability.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { DeliveryModule } from './delivery/delivery/delivery.module';
     OrdersModule,
     PaymentsModule,
     DeliveryModule,
+    ServiceabilityModule,
   ],
   controllers: [AppController],
   providers: [
