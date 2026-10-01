@@ -2,31 +2,32 @@ import {
   Body,
   Controller,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 import { CheckServiceabilityDto } from './dto/check-serviceability.dto';
 import { ServiceabilityService } from './serviceability.service';
 
 @Controller('serviceability')
+@UseGuards(JwtAuthGuard)
 export class ServiceabilityController {
   constructor(
     private readonly serviceabilityService: ServiceabilityService,
   ) {}
 
   @Post('check')
-  @UseGuards(JwtAuthGuard)
   async checkServiceability(
-    @Req() req: { user: { userId: string } },
-    @Body() dto: CheckServiceabilityDto,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() data: CheckServiceabilityDto,
   ) {
     return this.serviceabilityService.getServiceabilityData(
-      req.user.userId,
-      dto.addressId,
-      dto.restaurantId,
+      user.userId,
+      data.addressId,
+      data.restaurantId,
     );
   }
 }
