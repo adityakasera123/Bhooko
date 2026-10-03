@@ -161,6 +161,29 @@ enum DeliveryEventType {
   CANCELLED
 }
 
+enum NotificationType {
+  ORDER_PLACED
+  ORDER_CONFIRMED
+  ORDER_ACCEPTED
+  ORDER_REJECTED
+  ORDER_CANCELLED
+  ORDER_READY
+
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  REFUND_INITIATED
+  REFUND_COMPLETED
+  REFUND_FAILED
+
+  RIDER_ASSIGNED
+  RIDER_ACCEPTED
+  ARRIVED_AT_RESTAURANT
+  ORDER_PICKED_UP
+  OUT_FOR_DELIVERY
+  ORDER_DELIVERED
+  DELIVERY_FAILED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -177,6 +200,8 @@ model User {
   cart                Cart?
   orders              Order[]
   paymentTransactions PaymentTransaction[]
+
+  notifications       Notification[]
 
   // DELIVERY
   rider Rider?
@@ -613,4 +638,23 @@ model DeliveryEvent {
 
   @@index([deliveryId])
   @@index([type])
+}
+
+model Notification {
+  id                String           @id @default(uuid())
+  recipientUserId   String
+  type              NotificationType
+  title             String
+  message           String
+  relatedEntityType String?
+  relatedEntityId   String?
+  isRead            Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  readAt            DateTime?
+
+  recipient User @relation(fields: [recipientUserId], references: [id])
+
+  @@index([recipientUserId])
+  @@index([recipientUserId, isRead])
+  @@index([recipientUserId, createdAt])
 }
