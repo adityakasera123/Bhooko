@@ -11,12 +11,15 @@ import { RazorpayService } from './razorpay.service';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly razorpayService: RazorpayService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
 
@@ -994,6 +997,15 @@ const updatedPaymentTransaction =
 for (const refund of verificationResult.refundReservations) {
   await this.executeReservedRefund(refund.id);
 }
+
+await this.notificationsService.create({
+  recipientUserId: paymentTransaction.customerId,
+  type: NotificationType.PAYMENT_SUCCESS,
+  title: 'Payment Successful',
+  message: 'Your BHOOKO payment was completed successfully.',
+  relatedEntityType: 'PAYMENT_TRANSACTION',
+  relatedEntityId: updatedPaymentTransaction.id,
+});
 
     return {
       message: 'Payment verified successfully',

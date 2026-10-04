@@ -12,10 +12,11 @@ import { ReconciliationResolutionService } from './reconciliation/reconciliation
 import { ReconciliationRunService } from './reconciliation/reconciliation-run.service';
 import { ReconciliationMatcher } from './reconciliation/reconciliation-matcher.service';
 import { RefundReconciliationService } from './reconciliation/refund-reconciliation.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, NotificationsModule],
 
   providers: [
   PaymentsService,
