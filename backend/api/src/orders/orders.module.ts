@@ -9,6 +9,7 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderStateMachineService } from './order-state-machine.service';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     PaymentsModule,
     DeliveryModule,
     RealtimeModule,
+    NotificationsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrderStateMachineService],

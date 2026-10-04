@@ -22,6 +22,7 @@ import {
   RestaurantOrderView,
 } from './dto/restaurant-order-query.dto';
 import { OrderStateMachineService } from './order-state-machine.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -93,6 +94,13 @@ describe('OrdersService', () => {
     requestRefund: jest.fn(),
     reserveRefundInTransaction: jest.fn(),
     executeReservedRefund: jest.fn(),
+  },
+},
+
+{
+  provide: NotificationsService,
+  useValue: {
+    create: jest.fn(),
   },
 },
         ],
@@ -750,6 +758,7 @@ describe('OrdersService', () => {
       customerId: 'customer-1',
       restaurantId: 'restaurant-1',
       status: 'CREATED',
+      
     };
 
     prismaMock.order = {
@@ -1031,6 +1040,7 @@ expect(
   'customer-1',
   {
     orderId: 'order-6',
+    restaurantId: 'restaurant-1',
     status: 'CONFIRMED',
   },
 );
@@ -1633,7 +1643,11 @@ it('should reject restaurant owner from accepting another restaurant order', asy
     customerId: 'customer-1',
     restaurantId: 'restaurant-1',
     status: 'CREATED',
+    restaurant: {
+  ownerId: 'restaurant-owner-1',
+},
   }),
+  
   update: mockResolved({
     id: 'order-4',
     customerId: 'customer-1',

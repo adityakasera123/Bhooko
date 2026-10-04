@@ -19,6 +19,9 @@ import { PaymentsService } from '../payments/payments.service';
 import { DeliveryService } from '../delivery/delivery/delivery.service';
 import { RealtimeService } from '../realtime/services/realtime.service';
 
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
+
 @Injectable()
 export class OrdersService {
 constructor(
@@ -28,6 +31,7 @@ constructor(
   private readonly paymentsService: PaymentsService,
   private readonly deliveryService: DeliveryService,
   private readonly realtimeService: RealtimeService,
+  private readonly notificationsService: NotificationsService,
 ) {}
 
 async createOrder(userId: string, dto: CreateOrderDto) {
@@ -225,6 +229,15 @@ totalInPaise: pricing.totalInPaise,
       status: order.status,
     },
   );
+
+  await this.notificationsService.create({
+  recipientUserId: userId,
+  type: NotificationType.ORDER_PLACED,
+  title: 'Order Placed',
+  message: `Your order from ${order.restaurantName} has been placed successfully.`,
+  relatedEntityType: 'ORDER',
+  relatedEntityId: order.id,
+});
 }
 
     return {
@@ -444,6 +457,15 @@ const updatedOrder = await this.prisma.order.update({
 
 if (dto.status === OrderStatus.READY) {
   await this.deliveryService.createDelivery(orderId);
+
+  await this.notificationsService.create({
+    recipientUserId: updatedOrder.customerId,
+    type: NotificationType.ORDER_READY,
+    title: 'Order Ready',
+    message: 'Your order is ready and will be handed over for delivery.',
+    relatedEntityType: 'ORDER',
+    relatedEntityId: updatedOrder.id,
+  });
 }
 
 this.realtimeService.emitOrderStatusChanged(
@@ -534,9 +556,19 @@ this.realtimeService.emitCustomerOrderUpdated(
   updatedOrder.customerId,
   {
     orderId: updatedOrder.id,
+    restaurantId: updatedOrder.restaurantId,
     status: updatedOrder.status,
   },
 );
+
+await this.notificationsService.create({
+  recipientUserId: updatedOrder.customerId,
+  type: NotificationType.ORDER_CONFIRMED,
+  title: 'Order Confirmed',
+  message: 'Your BHOOKO order has been confirmed by the restaurant.',
+  relatedEntityType: 'ORDER',
+  relatedEntityId: updatedOrder.id,
+});
 
 return updatedOrder;
 }
@@ -635,6 +667,15 @@ async rejectOrder(userId: string, orderId: string) {
     },
   );
 
+  await this.notificationsService.create({
+  recipientUserId: result.order.customerId,
+  type: NotificationType.ORDER_REJECTED,
+  title: 'Order Rejected',
+  message: 'Unfortunately, the restaurant could not accept your order.',
+  relatedEntityType: 'ORDER',
+  relatedEntityId: result.order.id,
+});
+
   this.realtimeService.emitCustomerOrderUpdated(
     result.order.customerId,
     {
@@ -680,12 +721,19 @@ return result.order;
 }
 
 async cancelOrder(userId: string, orderId: string) {
-  const order = await this.prisma.order.findFirst({
-    where: {
-      id: orderId,
-      customerId: userId,
+ const order = await this.prisma.order.findFirst({
+  where: {
+    id: orderId,
+    customerId: userId,
+  },
+  include: {
+    restaurant: {
+      select: {
+        ownerId: true,
+      },
     },
-  });
+  },
+});
 
   if (!order) {
     throw new NotFoundException('Order not found');
@@ -735,6 +783,14 @@ this.realtimeService.emitCustomerOrderUpdated(
   },
 );
 
+await this.notificationsService.create({
+  recipientUserId: order.restaurant.ownerId,
+  type: NotificationType.ORDER_CANCELLED,
+  title: 'Order Cancelled',
+  message: 'A customer has cancelled the order.',
+  relatedEntityType: 'ORDER',
+  relatedEntityId: updatedOrder.id,
+});
 return updatedOrder;
 }
 
