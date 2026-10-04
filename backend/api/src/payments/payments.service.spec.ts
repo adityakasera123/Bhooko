@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
 import { PaymentsService } from './payments.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -34,6 +35,11 @@ describe('PaymentsService', () => {
     createOrder: jest.fn(),
     createRefund: jest.fn(),
   };
+
+  const notificationsServiceMock: any = {
+  create: jest.fn(),
+  createIfNotExists: jest.fn(),
+};
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -69,11 +75,9 @@ describe('PaymentsService', () => {
             provide: RazorpayService,
             useValue: razorpayServiceMock,
           },
-          {
+     {
   provide: NotificationsService,
-  useValue: {
-    create: jest.fn(),
-  },
+  useValue: notificationsServiceMock,
 },
         ],
       }).compile();
@@ -274,6 +278,15 @@ describe('PaymentsService', () => {
       status: 'REFUND_PENDING',
       orderIds: ['order-1'],
     });
+
+    expect(notificationsServiceMock.createIfNotExists).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.REFUND_INITIATED,
+  title: 'Refund Initiated',
+  message: 'Your BHOOKO refund has been initiated successfully.',
+  relatedEntityType: 'REFUND',
+  relatedEntityId: 'refund-record-1',
+});
   });
 
 

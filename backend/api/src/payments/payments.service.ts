@@ -201,6 +201,17 @@ export class PaymentsService {
         refundReservation.id,
       );
 
+      if (updatedRefund.status === 'PENDING') {
+  await this.notificationsService.createIfNotExists({
+    recipientUserId: paymentTransaction.customerId,
+    type: NotificationType.REFUND_INITIATED,
+    title: 'Refund Initiated',
+    message: 'Your BHOOKO refund has been initiated successfully.',
+    relatedEntityType: 'REFUND',
+    relatedEntityId: updatedRefund.id,
+  });
+}
+
     const processedAggregate =
       await this.prisma.refund.aggregate({
         where: {
@@ -686,10 +697,6 @@ export class PaymentsService {
       },
     );
   }
-
-
-
-
 
   async createPayment(userId: string, orderIds: string[]) {
     const uniqueOrderIds = [...new Set(orderIds)];
@@ -1484,6 +1491,27 @@ return {
           cumulativeRefundedInPaise,
         };
       });
+
+     if (result.refund.status === 'PROCESSED') {
+  await this.notificationsService.createIfNotExists({
+    recipientUserId: paymentTransaction.customerId,
+    type: NotificationType.REFUND_COMPLETED,
+    title: 'Refund Completed',
+    message: 'Your BHOOKO refund has been completed successfully.',
+    relatedEntityType: 'REFUND',
+    relatedEntityId: result.refund.id,
+  });
+}
+if (result.refund.status === 'FAILED') {
+  await this.notificationsService.createIfNotExists({
+    recipientUserId: paymentTransaction.customerId,
+    type: NotificationType.REFUND_FAILED,
+    title: 'Refund Failed',
+    message: 'Your BHOOKO refund could not be completed.',
+    relatedEntityType: 'REFUND',
+    relatedEntityId: result.refund.id,
+  });
+}
 
     return {
       received: true,

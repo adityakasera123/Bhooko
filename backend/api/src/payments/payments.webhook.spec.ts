@@ -422,6 +422,15 @@ describe('PaymentsService Webhook', () => {
       paymentStatus: 'PAID',
       refundedAmountInPaise: 9000,
     });
+
+    expect(notificationsServiceMock.createIfNotExists).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.REFUND_COMPLETED,
+  title: 'Refund Completed',
+  message: 'Your BHOOKO refund has been completed successfully.',
+  relatedEntityType: 'REFUND',
+  relatedEntityId: 'refund-1',
+});
   });
 
   it('should safely ignore a duplicate refund.processed webhook', async () => {
@@ -581,6 +590,15 @@ describe('PaymentsService Webhook', () => {
       paymentStatus: 'PAID',
       refundedAmountInPaise: 0,
     });
+
+    expect(notificationsServiceMock.createIfNotExists).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.REFUND_FAILED,
+  title: 'Refund Failed',
+  message: 'Your BHOOKO refund could not be completed.',
+  relatedEntityType: 'REFUND',
+  relatedEntityId: 'refund-1',
+});
   });
 
   it('should safely ignore a duplicate refund.failed webhook', async () => {
