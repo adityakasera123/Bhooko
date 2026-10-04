@@ -1213,6 +1213,15 @@ return {
           },
         });
 
+        await this.notificationsService.createIfNotExists({
+  recipientUserId: updatedPayment.customerId,
+  type: NotificationType.PAYMENT_FAILED,
+  title: 'Payment Failed',
+  message: 'Your BHOOKO payment could not be completed.',
+  relatedEntityType: 'PAYMENT_TRANSACTION',
+  relatedEntityId: updatedPayment.id,
+});
+
       return {
         received: true,
         processed: true,

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
 import { PaymentsService } from './payments.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 
 describe('PaymentsService Webhook', () => {
   let service: PaymentsService;
@@ -26,6 +27,11 @@ describe('PaymentsService Webhook', () => {
       count: jest.fn(),
     },
   };
+
+  const notificationsServiceMock = {
+  create: jest.fn(),
+  createIfNotExists: jest.fn(),
+};
 
   const razorpayServiceMock: any = {
     createOrder: jest.fn(),
@@ -53,12 +59,9 @@ describe('PaymentsService Webhook', () => {
           },
 
        {
-  provide: NotificationsService,
-  useValue: {
-    create: jest.fn(),
-    createIfNotExists: jest.fn(),
+    provide: NotificationsService,
+    useValue: notificationsServiceMock,
   },
-},
 
         ],
       }).compile();
@@ -211,46 +214,57 @@ describe('PaymentsService Webhook', () => {
   });
 
   it('should mark a pending payment as FAILED on payment.failed', async () => {
-    prismaMock.paymentTransaction.findUnique.mockResolvedValue({
-      id: 'payment-1',
-      status: 'PENDING',
-      amountInPaise: 18000,
-      currency: 'INR',
-      razorpayOrderId: 'order_test_123',
-      razorpayPaymentId: null,
-    });
+  prismaMock.paymentTransaction.findUnique.mockResolvedValue({
+    id: 'payment-1',
+    customerId: 'customer-1',
+    status: 'PENDING',
+    amountInPaise: 18000,
+    currency: 'INR',
+    razorpayOrderId: 'order_test_123',
+    razorpayPaymentId: null,
+  });
 
-    prismaMock.paymentTransaction.update.mockResolvedValue({
-      id: 'payment-1',
-      status: 'FAILED',
-      amountInPaise: 18000,
-      currency: 'INR',
-      razorpayOrderId: 'order_test_123',
-      razorpayPaymentId: 'pay_test_123',
-    });
+  prismaMock.paymentTransaction.update.mockResolvedValue({
+    id: 'payment-1',
+    customerId: 'customer-1',
+    status: 'FAILED',
+    amountInPaise: 18000,
+    currency: 'INR',
+    razorpayOrderId: 'order_test_123',
+    razorpayPaymentId: 'pay_test_123',
+  });
 
-    const result = await service.handleWebhook({
-      event: 'payment.failed',
-      payload: {
-        payment: {
-          entity: {
-            id: 'pay_test_123',
-            order_id: 'order_test_123',
-            amount: 18000,
-          },
+  const result = await service.handleWebhook({
+    event: 'payment.failed',
+    payload: {
+      payment: {
+        entity: {
+          id: 'pay_test_123',
+          order_id: 'order_test_123',
+          amount: 18000,
         },
       },
-    });
-
-    expect(result).toEqual({
-      received: true,
-      processed: true,
-      event: 'payment.failed',
-      paymentTransactionId: 'payment-1',
-      razorpayPaymentId: 'pay_test_123',
-      status: 'FAILED',
-    });
+    },
   });
+
+  expect(result).toEqual({
+    received: true,
+    processed: true,
+    event: 'payment.failed',
+    paymentTransactionId: 'payment-1',
+    razorpayPaymentId: 'pay_test_123',
+    status: 'FAILED',
+  });
+
+  expect(notificationsServiceMock.createIfNotExists).toHaveBeenCalledWith({
+    recipientUserId: 'customer-1',
+    type: NotificationType.PAYMENT_FAILED,
+    title: 'Payment Failed',
+    message: 'Your BHOOKO payment could not be completed.',
+    relatedEntityType: 'PAYMENT_TRANSACTION',
+    relatedEntityId: 'payment-1',
+  });
+});
 
   it('should never downgrade a PAID payment when a failed webhook arrives later', async () => {
     prismaMock.paymentTransaction.findUnique.mockResolvedValue({
