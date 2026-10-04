@@ -27,6 +27,30 @@ export class NotificationsService {
     });
   }
 
+  async createIfNotExists(data: {
+  recipientUserId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
+}) {
+  const existing = await this.prisma.notification.findFirst({
+    where: {
+      recipientUserId: data.recipientUserId,
+      type: data.type,
+      relatedEntityType: data.relatedEntityType,
+      relatedEntityId: data.relatedEntityId,
+    },
+  });
+
+  if (existing) {
+    return existing;
+  }
+
+  return this.create(data);
+}
+
   async findAllForUser(userId: string) {
   return this.prisma.notification.findMany({
     where: {

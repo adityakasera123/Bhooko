@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
 import { RazorpayService } from './razorpay.service';
 import { PaymentsService } from './payments.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 describe('PaymentsService Webhook', () => {
   let service: PaymentsService;
@@ -50,6 +51,15 @@ describe('PaymentsService Webhook', () => {
             provide: RazorpayService,
             useValue: razorpayServiceMock,
           },
+
+       {
+  provide: NotificationsService,
+  useValue: {
+    create: jest.fn(),
+    createIfNotExists: jest.fn(),
+  },
+},
+
         ],
       }).compile();
 

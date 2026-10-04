@@ -998,7 +998,7 @@ for (const refund of verificationResult.refundReservations) {
   await this.executeReservedRefund(refund.id);
 }
 
-await this.notificationsService.create({
+await this.notificationsService.createIfNotExists({
   recipientUserId: paymentTransaction.customerId,
   type: NotificationType.PAYMENT_SUCCESS,
   title: 'Payment Successful',
@@ -1157,6 +1157,15 @@ for (const refund of captureResult.refundReservations) {
 
 const updatedPayment =
   captureResult.updatedPayment;
+
+  await this.notificationsService.createIfNotExists({
+  recipientUserId: updatedPayment.customerId,
+  type: NotificationType.PAYMENT_SUCCESS,
+  title: 'Payment Successful',
+  message: 'Your BHOOKO payment was completed successfully.',
+  relatedEntityType: 'PAYMENT_TRANSACTION',
+  relatedEntityId: updatedPayment.id,
+});
 
 return {
   received: true,
