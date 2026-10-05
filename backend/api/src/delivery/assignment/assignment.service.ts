@@ -1135,13 +1135,18 @@ export class AssignmentService {
 
         },
 
-        include: {
-
-          delivery: true,
-
-          rider: true,
-
+       include: {
+  delivery: {
+    include: {
+      order: {
+        select: {
+          customerId: true,
         },
+      },
+    },
+  },
+  rider: true,
+},
 
       });
 
@@ -1279,6 +1284,15 @@ export class AssignmentService {
         outForDeliveryAt: outForDeliveryAt.toISOString(),
       },
     );
+
+     await this.notificationsService.createIfNotExists({
+  recipientUserId: assignment.delivery.order.customerId,
+  type: NotificationType.OUT_FOR_DELIVERY,
+  title: 'Out for Delivery',
+  message: 'Your order is out for delivery and on the way to you.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: assignment.deliveryId,
+});
 
 
 
