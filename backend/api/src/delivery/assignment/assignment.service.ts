@@ -31,6 +31,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 
 import { RealtimeService } from '../../realtime/services/realtime.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationType } from '../../notifications/enums/notification-type.enum';
 
 
 
@@ -43,6 +45,8 @@ export class AssignmentService {
     private readonly prisma: PrismaService,
 
     private readonly realtimeService: RealtimeService,
+
+    private readonly notificationsService: NotificationsService,
 
   ) {}
 
@@ -61,7 +65,11 @@ export class AssignmentService {
       where: { id: deliveryId },
 
       include: {
-
+        order: {
+    select: {
+      customerId: true,
+    },
+  },
         rider: true,
 
         assignments: {
@@ -312,7 +320,14 @@ export class AssignmentService {
       },
     );
 
-
+    await this.notificationsService.createIfNotExists({
+  recipientUserId: delivery.order.customerId,
+  type: NotificationType.RIDER_ASSIGNED,
+  title: 'Rider Assigned',
+  message: 'A rider has been assigned to your order.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: deliveryId,
+});
 
     return assignment;
 

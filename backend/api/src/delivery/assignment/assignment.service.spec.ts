@@ -14,6 +14,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AssignmentService } from './assignment.service';
 import { RealtimeService } from '../../realtime/services/realtime.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationType } from '../../notifications/enums/notification-type.enum';
 
 type MockFn = jest.MockedFunction<any>;
 
@@ -91,6 +93,11 @@ describe('AssignmentService', () => {
   $transaction: transactionMock,
 };
 
+let notificationsService: {
+  create: jest.Mock;
+  createIfNotExists: jest.Mock;
+};
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -110,9 +117,16 @@ describe('AssignmentService', () => {
       emitDeliveryFailed: jest.fn(),
       emitDeliveryCancelled: jest.fn(),
     };
+    
+     notificationsService = {
+    create: jest.fn(),
+    createIfNotExists: jest.fn(),
+  };
+
    service = new AssignmentService(
   prismaMock as unknown as PrismaService,
-realtimeService as unknown as RealtimeService,
+  realtimeService as unknown as RealtimeService,
+  notificationsService as unknown as NotificationsService,
 );
   });
 
@@ -193,6 +207,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue(null);
@@ -211,6 +228,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -233,6 +253,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -255,6 +278,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -288,6 +314,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -324,6 +353,14 @@ realtimeService as unknown as RealtimeService,
       );
 
       expect(result).toEqual(assignment);
+      expect(notificationsService.createIfNotExists).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.RIDER_ASSIGNED,
+  title: 'Rider Assigned',
+  message: 'A rider has been assigned to your order.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: deliveryId,
+});
     });
 
     it('should create the assignment with PENDING status', async () => {
@@ -333,6 +370,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -377,6 +417,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -423,6 +466,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -468,6 +514,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
@@ -515,6 +564,9 @@ realtimeService as unknown as RealtimeService,
         status: DeliveryStatus.CREATED,
         rider: null,
         assignments: [],
+        order: {
+    customerId: 'customer-1',
+  },
       });
 
       prismaMock.rider.findUnique.mockResolvedValue({
