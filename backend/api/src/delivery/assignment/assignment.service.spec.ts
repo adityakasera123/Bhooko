@@ -672,9 +672,12 @@ let notificationsService: {
       prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
         ...acceptedAssignment,
         delivery: {
-          id: deliveryId,
-          status: DeliveryStatus.ASSIGNED,
-        },
+  id: deliveryId,
+  status: DeliveryStatus.ASSIGNED,
+  order: {
+    customerId: 'customer-1',
+  },
+},
         rider: {
           id: riderId,
           availability: RiderAvailability.ASSIGNED,
@@ -710,15 +713,27 @@ let notificationsService: {
         ...acceptedAssignment,
         status: DeliveryAssignmentStatus.ACCEPTED,
       });
+
+      expect(notificationsService.createIfNotExists).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.RIDER_ACCEPTED,
+  title: 'Rider Accepted',
+  message: 'Your assigned rider has accepted the delivery.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: deliveryId,
+});
     });
 
     it('should change assignment status to ACCEPTED', async () => {
       prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
         ...acceptedAssignment,
         delivery: {
-          id: deliveryId,
-          status: DeliveryStatus.ASSIGNED,
-        },
+  id: deliveryId,
+  status: DeliveryStatus.ASSIGNED,
+  order: {
+    customerId: 'customer-1',
+  },
+},
         rider: {
           id: riderId,
           availability: RiderAvailability.ASSIGNED,
@@ -749,9 +764,12 @@ let notificationsService: {
       prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
         ...acceptedAssignment,
         delivery: {
-          id: deliveryId,
-          status: DeliveryStatus.ASSIGNED,
-        },
+  id: deliveryId,
+  status: DeliveryStatus.ASSIGNED,
+  order: {
+    customerId: 'customer-1',
+  },
+},
         rider: {
           id: riderId,
           availability: RiderAvailability.ASSIGNED,
@@ -779,9 +797,12 @@ let notificationsService: {
       prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
         ...acceptedAssignment,
         delivery: {
-          id: deliveryId,
-          status: DeliveryStatus.ASSIGNED,
-        },
+  id: deliveryId,
+  status: DeliveryStatus.ASSIGNED,
+  order: {
+    customerId: 'customer-1',
+  },
+},
         rider: {
           id: riderId,
           availability: RiderAvailability.ASSIGNED,
@@ -809,9 +830,12 @@ let notificationsService: {
       prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
         ...acceptedAssignment,
         delivery: {
-          id: deliveryId,
-          status: DeliveryStatus.ASSIGNED,
-        },
+  id: deliveryId,
+  status: DeliveryStatus.ASSIGNED,
+  order: {
+    customerId: 'customer-1',
+  },
+},
         rider: {
           id: riderId,
           availability: RiderAvailability.ASSIGNED,
@@ -842,10 +866,13 @@ let notificationsService: {
     it('should execute acceptance changes inside a transaction', async () => {
       prismaMock.deliveryAssignment.findUnique.mockResolvedValue({
         ...acceptedAssignment,
-        delivery: {
-          id: deliveryId,
-          status: DeliveryStatus.ASSIGNED,
-        },
+       delivery: {
+  id: deliveryId,
+  status: DeliveryStatus.ASSIGNED,
+  order: {
+    customerId: 'customer-1',
+  },
+},
         rider: {
           id: riderId,
           availability: RiderAvailability.ASSIGNED,
@@ -961,10 +988,13 @@ let notificationsService: {
       status: DeliveryAssignmentStatus.ACCEPTED,
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
-      delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.RIDER_ACCEPTED,
+          delivery: {
+      id: 'delivery-123',
+      status: DeliveryStatus.RIDER_ACCEPTED,
+      order: {
+        customerId: 'customer-1',
       },
+    },
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -997,10 +1027,13 @@ let notificationsService: {
       status: DeliveryAssignmentStatus.ACCEPTED,
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
-      delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.RIDER_ACCEPTED,
+          delivery: {
+      id: 'delivery-123',
+      status: DeliveryStatus.RIDER_ACCEPTED,
+      order: {
+        customerId: 'customer-1',
       },
+    },
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1032,10 +1065,13 @@ let notificationsService: {
       status: DeliveryAssignmentStatus.ACCEPTED,
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
-      delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.RIDER_ACCEPTED,
+          delivery: {
+      id: 'delivery-123',
+      status: DeliveryStatus.RIDER_ACCEPTED,
+      order: {
+        customerId: 'customer-1',
       },
+    },
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1069,10 +1105,13 @@ let notificationsService: {
       status: DeliveryAssignmentStatus.ACCEPTED,
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
-      delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.RIDER_ACCEPTED,
+          delivery: {
+      id: 'delivery-123',
+      status: DeliveryStatus.RIDER_ACCEPTED,
+      order: {
+        customerId: 'customer-1',
       },
+    },
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1178,10 +1217,13 @@ let notificationsService: {
       status: DeliveryAssignmentStatus.ACCEPTED,
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
-      delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
-      },
+     delivery: {
+  id: 'delivery-123',
+  status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1215,9 +1257,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1251,9 +1296,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1288,9 +1336,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.ARRIVED_AT_RESTAURANT,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1310,6 +1361,7 @@ let notificationsService: {
   });
   });
 
+  
   describe('outForDelivery', () => {
   const assignmentId = 'assignment-123';
 

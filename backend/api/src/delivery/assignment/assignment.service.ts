@@ -350,16 +350,16 @@ export class AssignmentService {
         include: {
 
           delivery: {
-
-            select: {
-
-              id: true,
-
-              status: true,
-
-            },
-
-          },
+  select: {
+    id: true,
+    status: true,
+    order: {
+      select: {
+        customerId: true,
+      },
+    },
+  },
+},
 
           rider: {
 
@@ -543,7 +543,15 @@ export class AssignmentService {
         assignmentId: updatedAssignment.id,
       },
     );
-
+    
+    await this.notificationsService.createIfNotExists({
+  recipientUserId: assignment.delivery.order.customerId,
+  type: NotificationType.RIDER_ACCEPTED,
+  title: 'Rider Accepted',
+  message: 'Your assigned rider has accepted the delivery.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: assignment.delivery.id,
+});
 
 
     return updatedAssignment;
@@ -756,12 +764,17 @@ export class AssignmentService {
         },
 
         include: {
-
-          delivery: true,
-
-          rider: true,
-
+  delivery: {
+    include: {
+      order: {
+        select: {
+          customerId: true,
         },
+      },
+    },
+  },
+  rider: true,
+},
 
       });
 
@@ -916,6 +929,14 @@ export class AssignmentService {
       },
     );
 
+    await this.notificationsService.createIfNotExists({
+  recipientUserId: assignment.delivery.order.customerId,
+  type: NotificationType.ARRIVED_AT_RESTAURANT,
+  title: 'Rider Arrived',
+  message: 'Your rider has arrived at the restaurant and is waiting for your order.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: assignment.deliveryId,
+});
 
 
     return delivery;
@@ -937,12 +958,17 @@ export class AssignmentService {
         },
 
         include: {
-
-          delivery: true,
-
-          rider: true,
-
+  delivery: {
+    include: {
+      order: {
+        select: {
+          customerId: true,
         },
+      },
+    },
+  },
+  rider: true,
+},
 
       });
 
@@ -1081,6 +1107,14 @@ export class AssignmentService {
       },
     );
 
+    await this.notificationsService.createIfNotExists({
+  recipientUserId: assignment.delivery.order.customerId,
+  type: NotificationType.ORDER_PICKED_UP,
+  title: 'Order Picked Up',
+  message: 'Your order has been picked up by the rider.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: assignment.deliveryId,
+});
 
 
     return delivery;
