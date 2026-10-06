@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import {
@@ -33,6 +33,7 @@ constructor(
   private readonly realtimeService: RealtimeService,
   private readonly notificationsService: NotificationsService,
 ) {}
+
 
 async createOrder(userId: string, dto: CreateOrderDto) {
   return this.prisma.$transaction(async (tx) => {
@@ -150,14 +151,25 @@ async createOrder(userId: string, dto: CreateOrderDto) {
       }
     }
 
-    const createdOrders = [];
+    const createdOrders: Array<
+      Prisma.OrderGetPayload<{
+        include: {
+          items: true;
+          restaurant: {
+            select: {
+              ownerId: true;
+            };
+          };
+        };
+      }>
+    > = [];
 
     for (const group of restaurantGroups.values()) {
       const itemSubtotalInPaise = group.itemSubtotalInPaise;
 
       const pricing = this.pricingService.calculate({
-  itemSubtotalInPaise,
-});
+        itemSubtotalInPaise,
+      });
 
       const order = await tx.order.create({
         data: {
@@ -181,11 +193,11 @@ async createOrder(userId: string, dto: CreateOrderDto) {
           deliveryInstructions: address.deliveryInstructions,
 
           itemSubtotalInPaise: pricing.itemSubtotalInPaise,
-deliveryFeeInPaise: pricing.deliveryFeeInPaise,
-platformFeeInPaise: pricing.platformFeeInPaise,
-taxInPaise: pricing.taxInPaise,
-discountInPaise: pricing.discountInPaise,
-totalInPaise: pricing.totalInPaise,
+          deliveryFeeInPaise: pricing.deliveryFeeInPaise,
+          platformFeeInPaise: pricing.platformFeeInPaise,
+          taxInPaise: pricing.taxInPaise,
+          discountInPaise: pricing.discountInPaise,
+          totalInPaise: pricing.totalInPaise,
 
           items: {
             create: group.items.map((item) => ({
@@ -199,6 +211,11 @@ totalInPaise: pricing.totalInPaise,
         },
         include: {
           items: true,
+          restaurant: {
+            select: {
+              ownerId: true,
+            },
+          },
         },
       });
 
@@ -212,33 +229,44 @@ totalInPaise: pricing.totalInPaise,
     });
 
     for (const order of createdOrders) {
-  this.realtimeService.emitRestaurantOrderReceived(
-    order.restaurantId,
-    {
-      orderId: order.id,
-      customerId: userId,
-      status: order.status,
-    },
-  );
+      this.realtimeService.emitRestaurantOrderReceived(
+        order.restaurantId,
+        {
+          orderId: order.id,
+          customerId: userId,
+          status: order.status,
+        },
+      );
 
-  this.realtimeService.emitCustomerOrderUpdated(
-    userId,
-    {
-      orderId: order.id,
-      restaurantId: order.restaurantId,
-      status: order.status,
-    },
-  );
+      this.realtimeService.emitCustomerOrderUpdated(
+        userId,
+        {
+          orderId: order.id,
+          restaurantId: order.restaurantId,
+          status: order.status,
+        },
+      );
 
-  await this.notificationsService.create({
-  recipientUserId: userId,
-  type: NotificationType.ORDER_PLACED,
-  title: 'Order Placed',
-  message: `Your order from ${order.restaurantName} has been placed successfully.`,
-  relatedEntityType: 'ORDER',
-  relatedEntityId: order.id,
-});
-}
+      // Customer notification
+      await this.notificationsService.create({
+        recipientUserId: userId,
+        type: NotificationType.ORDER_PLACED,
+        title: 'Order Placed',
+        message: `Your order from ${order.restaurantName} has been placed successfully.`,
+        relatedEntityType: 'ORDER',
+        relatedEntityId: order.id,
+      });
+
+      // Restaurant owner notification
+      await this.notificationsService.create({
+        recipientUserId: order.restaurant.ownerId,
+        type: NotificationType.ORDER_PLACED,
+        title: 'New Order Received',
+        message: 'You have received a new order from a customer.',
+        relatedEntityType: 'ORDER',
+        relatedEntityId: order.id,
+      });
+    }
 
     return {
       message: 'Order created successfully',
@@ -247,6 +275,7 @@ totalInPaise: pricing.totalInPaise,
     };
   });
 }
+
 
 async getMyOrders(userId: string) {
   return this.prisma.order.findMany({

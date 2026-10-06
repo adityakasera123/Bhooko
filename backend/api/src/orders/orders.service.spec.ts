@@ -12,6 +12,7 @@ import { PricingService } from '../pricing/pricing.service';
 import { PaymentsService } from '../payments/payments.service';
 import { DeliveryService } from '../delivery/delivery/delivery.service';
 import { RealtimeService } from '../realtime/services/realtime.service';
+
 import {
   UpdateOrderStatus,
   UpdateOrderStatusDto,
@@ -23,6 +24,8 @@ import {
 } from './dto/restaurant-order-query.dto';
 import { OrderStateMachineService } from './order-state-machine.service';
 import { NotificationsService } from '../notifications/notifications.service';
+
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -54,6 +57,11 @@ describe('OrdersService', () => {
   emitCustomerOrderUpdated: jest.fn(),
   emitDeliveryStatusChanged: jest.fn(),
   emitDeliveryUpdated: jest.fn(),
+};
+
+const notificationsServiceMock: any = {
+  create: jest.fn(),
+  createIfNotExists: jest.fn(),
 };
 
   beforeEach(async () => {
@@ -88,19 +96,16 @@ describe('OrdersService', () => {
   useValue: realtimeServiceMock,
 },
 
+{
+  provide: NotificationsService,
+  useValue: notificationsServiceMock,
+},
          {
   provide: PaymentsService,
   useValue: {
     requestRefund: jest.fn(),
     reserveRefundInTransaction: jest.fn(),
     executeReservedRefund: jest.fn(),
-  },
-},
-
-{
-  provide: NotificationsService,
-  useValue: {
-    create: jest.fn(),
   },
 },
         ],
@@ -169,154 +174,203 @@ describe('OrdersService', () => {
   });
 
   it('should create an order using PricingService', async () => {
-    const tx: any = {
-      customerAddress: {
-        findFirst: mockResolved({
-          id: 'address-1',
-          label: 'Home',
-          contactName: 'Test Customer',
-          contactPhone: '+919999999991',
-          line1: '123 Test Street',
-          line2: null,
-          area: 'Sector 62',
-          city: 'Noida',
-          state: 'Uttar Pradesh',
-          pincode: '201301',
-          latitude: 28.6139,
-          longitude: 77.209,
-          deliveryInstructions: null,
-        }),
-      },
+  const tx: any = {
+    customerAddress: {
+      findFirst: mockResolved({
+        id: 'address-1',
+        label: 'Home',
+        contactName: 'Test Customer',
+        contactPhone: '+919999999991',
+        line1: '123 Test Street',
+        line2: null,
+        area: 'Sector 62',
+        city: 'Noida',
+        state: 'Uttar Pradesh',
+        pincode: '201301',
+        latitude: 28.6139,
+        longitude: 77.209,
+        deliveryInstructions: null,
+      }),
+    },
 
-      cart: {
-        findUnique: mockResolved({
-          id: 'cart-1',
-          items: [
-            {
-              id: 'cart-item-1',
-              quantity: 2,
-              foodItem: {
-                id: 'food-1',
-                name: 'Chicken Biryani',
-                priceInPaise: 18000,
-                isAvailable: true,
-                restaurantId: 'restaurant-1',
-                restaurant: {
-                  id: 'restaurant-1',
-                  name: 'Bhooko Kitchen',
-                },
+    cart: {
+      findUnique: mockResolved({
+        id: 'cart-1',
+        items: [
+          {
+            id: 'cart-item-1',
+            quantity: 2,
+
+            foodItem: {
+              id: 'food-1',
+              name: 'Chicken Biryani',
+              priceInPaise: 18000,
+              isAvailable: true,
+              restaurantId: 'restaurant-1',
+
+              restaurant: {
+                id: 'restaurant-1',
+                name: 'Bhooko Kitchen',
               },
             },
-          ],
-        }),
-      },
+          },
+        ],
+      }),
+    },
 
-      order: {
-        create: mockResolved({
-          id: 'order-1',
-          totalInPaise: 36000,
-          items: [
-            {
-              id: 'order-item-1',
-            },
-          ],
-        }),
-      },
+    order: {
+      create: mockResolved({
+        id: 'order-1',
+        restaurantName: 'Bhooko Kitchen',
 
-      cartItem: {
-        deleteMany: mockResolved({
-          count: 1,
-        }),
-      },
-    };
+        restaurant: {
+          ownerId: 'restaurant-owner-1',
+        },
 
-    prismaMock.$transaction.mockImplementation(
-      async (callback: any) => callback(tx),
-    );
+        totalInPaise: 36000,
 
-    pricingServiceMock.calculate.mockReturnValue({
+        items: [
+          {
+            id: 'order-item-1',
+          },
+        ],
+      }),
+    },
+
+    cartItem: {
+      deleteMany: mockResolved({
+        count: 1,
+      }),
+    },
+  };
+
+  prismaMock.$transaction.mockImplementation(
+    async (callback: any) => callback(tx),
+  );
+
+  pricingServiceMock.calculate.mockReturnValue({
+    itemSubtotalInPaise: 36000,
+    deliveryFeeInPaise: 0,
+    platformFeeInPaise: 0,
+    taxInPaise: 0,
+    discountInPaise: 0,
+    totalInPaise: 36000,
+  });
+
+  const result = await service.createOrder(
+    'customer-1',
+    {
+      addressId: 'address-1',
+    },
+  );
+
+  expect(
+    pricingServiceMock.calculate,
+  ).toHaveBeenCalledTimes(1);
+
+  expect(
+    pricingServiceMock.calculate,
+  ).toHaveBeenCalledWith({
+    itemSubtotalInPaise: 36000,
+  });
+
+  expect(tx.order.create).toHaveBeenCalledTimes(1);
+
+  expect(tx.order.create).toHaveBeenCalledWith({
+    data: expect.objectContaining({
+      customerId: 'customer-1',
+      restaurantId: 'restaurant-1',
+      status: 'CREATED',
+      restaurantName: 'Bhooko Kitchen',
+
       itemSubtotalInPaise: 36000,
       deliveryFeeInPaise: 0,
       platformFeeInPaise: 0,
       taxInPaise: 0,
       discountInPaise: 0,
       totalInPaise: 36000,
-    });
 
-    const result = await service.createOrder(
-      'customer-1',
-      {
-        addressId: 'address-1',
+      items: {
+        create: [
+          {
+            foodItemId: 'food-1',
+            foodItemName: 'Chicken Biryani',
+            unitPriceInPaise: 18000,
+            quantity: 2,
+            itemSubtotalInPaise: 36000,
+          },
+        ],
       },
-    );
+    }),
 
-    expect(
-      pricingServiceMock.calculate,
-    ).toHaveBeenCalledTimes(1);
+    include: {
+      items: true,
 
-    expect(
-      pricingServiceMock.calculate,
-    ).toHaveBeenCalledWith({
-      itemSubtotalInPaise: 36000,
-    });
+      restaurant: {
+        select: {
+          ownerId: true,
+        },
+      },
+    },
+  });
 
-    expect(tx.order.create).toHaveBeenCalledTimes(1);
+  expect(
+    tx.cartItem.deleteMany,
+  ).toHaveBeenCalledWith({
+    where: {
+      cartId: 'cart-1',
+    },
+  });
 
-    expect(tx.order.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerId: 'customer-1',
-        restaurantId: 'restaurant-1',
-        status: 'CREATED',
+  expect(result).toEqual({
+    message: 'Order created successfully',
+    orderCount: 1,
+    orders: [
+      {
+        id: 'order-1',
         restaurantName: 'Bhooko Kitchen',
 
-        itemSubtotalInPaise: 36000,
-        deliveryFeeInPaise: 0,
-        platformFeeInPaise: 0,
-        taxInPaise: 0,
-        discountInPaise: 0,
+        restaurant: {
+          ownerId: 'restaurant-owner-1',
+        },
+
         totalInPaise: 36000,
 
-        items: {
-          create: [
-            {
-              foodItemId: 'food-1',
-              foodItemName: 'Chicken Biryani',
-              unitPriceInPaise: 18000,
-              quantity: 2,
-              itemSubtotalInPaise: 36000,
-            },
-          ],
-        },
-      }),
-      include: {
-        items: true,
+        items: [
+          {
+            id: 'order-item-1',
+          },
+        ],
       },
-    });
-
-    expect(
-      tx.cartItem.deleteMany,
-    ).toHaveBeenCalledWith({
-      where: {
-        cartId: 'cart-1',
-      },
-    });
-
-    expect(result).toEqual({
-      message: 'Order created successfully',
-      orderCount: 1,
-      orders: [
-        {
-          id: 'order-1',
-          totalInPaise: 36000,
-          items: [
-            {
-              id: 'order-item-1',
-            },
-          ],
-        },
-      ],
-    });
+    ],
   });
+
+  // Customer notification
+  expect(
+    notificationsServiceMock.create,
+  ).toHaveBeenCalledWith({
+    recipientUserId: 'customer-1',
+    type: NotificationType.ORDER_PLACED,
+    title: 'Order Placed',
+    message:
+      'Your order from Bhooko Kitchen has been placed successfully.',
+    relatedEntityType: 'ORDER',
+    relatedEntityId: 'order-1',
+  });
+
+  // Restaurant owner notification
+  expect(
+    notificationsServiceMock.create,
+  ).toHaveBeenCalledWith({
+    recipientUserId: 'restaurant-owner-1',
+    type: NotificationType.ORDER_PLACED,
+    title: 'New Order Received',
+    message:
+      'You have received a new order from a customer.',
+    relatedEntityType: 'ORDER',
+    relatedEntityId: 'order-1',
+  });
+});
 
   it('should throw when food item is unavailable', async () => {
     const tx: any = {
@@ -1787,6 +1841,9 @@ it('should reject restaurant owner from accepting another restaurant order', asy
         id: 'order-1',
         customerId: 'customer-1',
         restaurantId: 'restaurant-1',
+         restaurant: {
+      ownerId: 'restaurant-owner-1',
+    },
         status: 'CREATED',
         totalInPaise: 36000,
         items: [
