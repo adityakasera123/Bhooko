@@ -1714,6 +1714,17 @@ let notificationsService: {
       id: 'delivery-123',
       status: DeliveryStatus.DELIVERED,
     });
+    
+   expect(
+  notificationsService.createIfNotExists,
+).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.ORDER_DELIVERED,
+  title: 'Order Delivered',
+  message: 'Your order has been delivered successfully. Enjoy your meal!',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: 'delivery-123',
+});
   });
 
   it('should change delivery status to DELIVERED', async () => {
@@ -1997,6 +2008,16 @@ let notificationsService: {
       id: 'delivery-123',
       status: DeliveryStatus.FAILED,
     });
+    expect(
+  notificationsService.createIfNotExists,
+).toHaveBeenCalledWith({
+  recipientUserId: 'customer-1',
+  type: NotificationType.DELIVERY_FAILED,
+  title: 'Delivery Failed',
+  message: 'Your delivery could not be completed.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: 'delivery-123',
+});
   });
 
   it('should change delivery status to FAILED', async () => {
