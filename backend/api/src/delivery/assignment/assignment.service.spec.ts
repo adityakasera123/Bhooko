@@ -1679,9 +1679,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1720,9 +1723,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1756,9 +1762,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1796,9 +1805,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1833,9 +1845,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1947,9 +1962,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -1988,9 +2006,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -2025,9 +2046,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -2065,9 +2089,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,
@@ -2103,9 +2130,12 @@ let notificationsService: {
       deliveryId: 'delivery-123',
       riderId: 'rider-123',
       delivery: {
-        id: 'delivery-123',
-        status: DeliveryStatus.OUT_FOR_DELIVERY,
-      },
+  id: 'delivery-123',
+  status: DeliveryStatus.OUT_FOR_DELIVERY,
+  order: {
+    customerId: 'customer-1',
+  },
+},
       rider: {
         id: 'rider-123',
         availability: RiderAvailability.ON_DELIVERY,

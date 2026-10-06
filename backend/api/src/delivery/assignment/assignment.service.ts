@@ -1315,12 +1315,17 @@ export class AssignmentService {
         },
 
         include: {
-
-          delivery: true,
-
-          rider: true,
-
+  delivery: {
+    include: {
+      order: {
+        select: {
+          customerId: true,
         },
+      },
+    },
+  },
+  rider: true,
+},
 
       });
 
@@ -1498,7 +1503,14 @@ export class AssignmentService {
       },
     );
 
-
+    await this.notificationsService.createIfNotExists({
+  recipientUserId: assignment.delivery.order.customerId,
+  type: NotificationType.ORDER_DELIVERED,
+  title: 'Order Delivered',
+  message: 'Your order has been delivered successfully. Enjoy your meal!',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: assignment.deliveryId,
+});
 
     return delivery;
 
@@ -1524,13 +1536,18 @@ export class AssignmentService {
 
         },
 
-        include: {
-
-          delivery: true,
-
-          rider: true,
-
+       include: {
+  delivery: {
+    include: {
+      order: {
+        select: {
+          customerId: true,
         },
+      },
+    },
+  },
+  rider: true,
+},
 
       });
 
@@ -1713,6 +1730,16 @@ export class AssignmentService {
       },
     );
 
+    await this.notificationsService.createIfNotExists({
+  recipientUserId: assignment.delivery.order.customerId,
+  type: NotificationType.DELIVERY_FAILED,
+  title: 'Delivery Failed',
+  message: reason
+    ? `Your delivery could not be completed. Reason: ${reason}`
+    : 'Your delivery could not be completed.',
+  relatedEntityType: 'DELIVERY',
+  relatedEntityId: assignment.deliveryId,
+});
 
 
     return delivery;
