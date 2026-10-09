@@ -6,6 +6,7 @@ import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { PushDevicesController } from './push-devices/push-devices.controller';
 import { PushDevicesService } from './push-devices/push-devices.service';
+import { ExpoPushProvider } from './push/expo-push.provider';
 
 @Module({
   imports: [AuthModule],
@@ -14,9 +15,10 @@ import { PushDevicesService } from './push-devices/push-devices.service';
     PushDevicesController,
   ],
   providers: [
-    NotificationsService,
-    PushDevicesService,
-  ],
+  NotificationsService,
+  PushDevicesService,
+  ExpoPushProvider,
+],
   exports: [
     NotificationsService,
     PushDevicesService,
