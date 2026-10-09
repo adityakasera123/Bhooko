@@ -2,6 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Expo, {
   type ExpoPushMessage,
+  type ExpoPushReceipt,
   type ExpoPushTicket,
 } from 'expo-server-sdk';
 
@@ -46,4 +47,25 @@ export class ExpoPushProvider {
       return null;
     }
   }
+
+
+async getReceipts(
+  ticketIds: string[],
+): Promise<Record<string, ExpoPushReceipt>> {
+  if (ticketIds.length === 0) {
+    return {};
+  }
+
+  try {
+    return await this.expo.getPushNotificationReceiptsAsync(ticketIds);
+  } catch (error: unknown) {
+    this.logger.error(
+      'Failed to fetch push notification receipts from Expo.',
+      error instanceof Error ? error.stack : undefined,
+    );
+
+    throw error;
+  }
+}
+
 }

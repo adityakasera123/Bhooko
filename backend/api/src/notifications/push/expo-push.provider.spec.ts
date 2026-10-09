@@ -76,4 +76,51 @@ describe('ExpoPushProvider', () => {
     expect(result).toBeNull();
     expect(loggerSpy).toHaveBeenCalled();
   });
+
+  
+  it('should fetch receipts for the supplied ticket IDs', async () => {
+    const receipts = {
+      'ticket-123': {
+        status: 'ok' as const,
+      },
+    };
+
+    const receiptSpy = jest
+      .spyOn(Expo.prototype, 'getPushNotificationReceiptsAsync')
+      .mockResolvedValue(receipts);
+
+    const result = await provider.getReceipts(['ticket-123']);
+
+    expect(receiptSpy).toHaveBeenCalledWith(['ticket-123']);
+    expect(result).toEqual(receipts);
+  });
+
+  it('should return an empty object when no ticket IDs are supplied', async () => {
+    const receiptSpy = jest.spyOn(
+      Expo.prototype,
+      'getPushNotificationReceiptsAsync',
+    );
+
+    const result = await provider.getReceipts([]);
+
+    expect(result).toEqual({});
+    expect(receiptSpy).not.toHaveBeenCalled();
+  });
+
+  it('should log and rethrow receipt-fetching errors', async () => {
+    jest
+      .spyOn(Expo.prototype, 'getPushNotificationReceiptsAsync')
+      .mockRejectedValue(new Error('Expo unavailable'));
+
+    const loggerSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(provider.getReceipts(['ticket-123'])).rejects.toThrow(
+      'Expo unavailable',
+    );
+
+    expect(loggerSpy).toHaveBeenCalled();
+  });
+
 });

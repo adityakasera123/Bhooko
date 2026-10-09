@@ -654,6 +654,7 @@ model Notification {
   readAt            DateTime?
 
   recipient User @relation(fields: [recipientUserId], references: [id])
+  pushReceipts PushReceipt[]
 
   @@index([recipientUserId])
   @@index([recipientUserId, isRead])
@@ -677,7 +678,37 @@ model PushDevice {
   lastRegisteredAt DateTime     @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pushReceipts PushReceipt[]
 
   @@index([userId])
   @@index([userId, isActive])
+}
+
+
+enum PushReceiptStatus {
+  PENDING
+  OK
+  ERROR
+}
+
+model PushReceipt {
+  id               String            @id @default(uuid())
+  notificationId  String
+  pushDeviceId    String
+  expoTicketId    String?
+  status          PushReceiptStatus  @default(PENDING)
+  errorCode       String?
+  errorMessage    String?
+  ticketCreatedAt DateTime            @default(now())
+  receiptCheckedAt DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  pushDevice   PushDevice   @relation(fields: [pushDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([status, ticketCreatedAt])
+  @@index([notificationId])
+  @@index([pushDeviceId])
+  @@index([expoTicketId])
 }
