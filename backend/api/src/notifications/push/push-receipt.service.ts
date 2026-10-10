@@ -4,6 +4,7 @@ import { PushReceiptStatus } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExpoPushProvider } from './expo-push.provider';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class PushReceiptService {
@@ -13,6 +14,8 @@ export class PushReceiptService {
     private readonly prisma: PrismaService,
     private readonly expoPushProvider: ExpoPushProvider,
   ) {}
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
 
   async processPendingReceipts(): Promise<void> {
     const pendingReceipts = await this.prisma.pushReceipt.findMany({
