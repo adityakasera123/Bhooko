@@ -26,32 +26,30 @@ export class NotificationsController {
   }
 
   @Get('unread')
-@UseGuards(JwtAuthGuard)
-async getUnreadNotifications(
-  @CurrentUser() user: CurrentUserPayload,
-) {
-  return this.notificationsService.findUnreadForUser(user.userId);
-}
+  @UseGuards(JwtAuthGuard)
+  async getUnreadNotifications(
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.notificationsService.findUnreadForUser(user.userId);
+  }
 
-@Patch(':id/read')
-@UseGuards(JwtAuthGuard)
-async markAsRead(
-  @CurrentUser() user: CurrentUserPayload,
-  @Param('id') notificationId: string,
-) {
-  return this.notificationsService.markAsRead(
-    notificationId,
-    user.userId,
-  );
-}
+  @Patch(':id/read')
+  @UseGuards(JwtAuthGuard)
+  async markAsRead(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id') notificationId: string,
+  ) {
+    return this.notificationsService.markAsRead(
+      notificationId,
+      user.userId,
+    );
+  }
 
-
-@Patch('read-all')
-@UseGuards(JwtAuthGuard)
-async markAllAsRead(
-  @CurrentUser() user: CurrentUserPayload,
-) {
-  return this.notificationsService.markAllAsRead(user.userId);
-}
-
+  @Patch('read-all')
+  @UseGuards(JwtAuthGuard)
+  async markAllAsRead(
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.notificationsService.markAllAsRead(user.userId);
+  }
 }
