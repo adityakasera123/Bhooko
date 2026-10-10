@@ -16,8 +16,9 @@ export class PushReceiptService {
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
-
   async processPendingReceipts(): Promise<void> {
+    this.logger.log('Scheduled Expo push receipt processing triggered.');
+
     const pendingReceipts = await this.prisma.pushReceipt.findMany({
       where: {
         status: PushReceiptStatus.PENDING,
