@@ -59,6 +59,10 @@ describe('OrdersService', () => {
   emitDeliveryUpdated: jest.fn(),
 };
 
+const deliveryServiceMock: any = {
+  createDelivery: jest.fn(),
+};
+
 const notificationsServiceMock: any = {
   create: jest.fn(),
   createIfNotExists: jest.fn(),
@@ -85,11 +89,9 @@ const notificationsServiceMock: any = {
           },
 
            {
-        provide: DeliveryService,
-        useValue: {
-          createDelivery: jest.fn(),
-             },
-           },
+  provide: DeliveryService,
+  useValue: deliveryServiceMock,
+},
 
            {
   provide: RealtimeService,
@@ -998,6 +1000,8 @@ it('should allow restaurant owner to move an order from PREPARING to READY', asy
       status: UpdateOrderStatus.READY,
     },
   });
+  expect(deliveryServiceMock.createDelivery).toHaveBeenCalledTimes(1);
+  expect(deliveryServiceMock.createDelivery).toHaveBeenCalledWith('order-1');
 });
 
 it('should not allow restaurant owner to cancel an order through the generic status endpoint', async () => {
