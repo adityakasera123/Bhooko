@@ -1,11 +1,19 @@
 import { jest } from '@jest/globals';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   DeliveryEventType,
   DeliveryStatus,
 } from '@prisma/client';
+
 import { PrismaService } from '../../prisma/prisma.service';
+import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
 import { DeliveryService } from './delivery.service';
+import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 
 type MockFn = jest.MockedFunction<any>;
 
@@ -25,6 +33,38 @@ describe('DeliveryService', () => {
 
   const orderId = 'order-1';
   const deliveryId = 'delivery-1';
+  const riderId = 'rider-1';
+  const riderUserId = 'rider-user-1';
+  const customerId = 'customer-1';
+
+  const txMock: TxMock = {
+    delivery: {
+      create: jest.fn() as MockFn,
+    },
+    deliveryEvent: {
+      create: jest.fn() as MockFn,
+    },
+  };
+
+  const transactionMock = jest.fn() as TransactionMock;
+
+  const prismaMock = {
+    order: {
+      findUnique: jest.fn() as MockFn,
+    },
+    rider: {
+      findUnique: jest.fn() as MockFn,
+    },
+    delivery: {
+      findUnique: jest.fn() as MockFn,
+      updateMany: jest.fn() as MockFn,
+    },
+    $transaction: transactionMock,
+  };
+
+  const deliveryRealtimeMock = {
+    emitToDelivery: jest.fn(),
+  };
 
   const delivery = {
     id: deliveryId,
@@ -42,38 +82,16 @@ describe('DeliveryService', () => {
     updatedAt: new Date(),
   };
 
-  const txMock: TxMock = {
-    delivery: {
-      create: jest.fn() as MockFn,
-    },
-    deliveryEvent: {
-      create: jest.fn() as MockFn,
-    },
-  };
-
-  const transactionMock = jest.fn() as TransactionMock;
-
-  const prismaMock = {
-    order: {
-      findUnique: jest.fn() as MockFn,
-    },
-    delivery: {
-      findUnique: jest.fn() as MockFn,
-    },
-    $transaction: transactionMock,
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
 
     transactionMock.mockImplementation(
-      async (callback: any) => {
-        return callback(txMock);
-      },
+      async (callback: any) => callback(txMock),
     );
 
     service = new DeliveryService(
       prismaMock as unknown as PrismaService,
+      deliveryRealtimeMock as unknown as DeliveryRealtimeService,
     );
   });
 
@@ -140,9 +158,7 @@ describe('DeliveryService', () => {
     it('should reject duplicate delivery for the same order', async () => {
       prismaMock.order.findUnique.mockResolvedValue({
         id: orderId,
-        delivery: {
-          id: deliveryId,
-        },
+        delivery: { id: deliveryId },
       });
 
       await expect(
@@ -161,12 +177,7 @@ describe('DeliveryService', () => {
       });
 
       txMock.delivery.create.mockResolvedValue(delivery);
-
-      txMock.deliveryEvent.create.mockResolvedValue({
-        id: 'event-1',
-        deliveryId,
-        type: DeliveryEventType.CREATED,
-      });
+      txMock.deliveryEvent.create.mockResolvedValue({ id: 'event-1' });
 
       await service.createDelivery(orderId);
 
@@ -185,12 +196,7 @@ describe('DeliveryService', () => {
       });
 
       txMock.delivery.create.mockResolvedValue(delivery);
-
-      txMock.deliveryEvent.create.mockResolvedValue({
-        id: 'event-1',
-        deliveryId,
-        type: DeliveryEventType.CREATED,
-      });
+      txMock.deliveryEvent.create.mockResolvedValue({ id: 'event-1' });
 
       await service.createDelivery(orderId);
 
@@ -209,12 +215,7 @@ describe('DeliveryService', () => {
       });
 
       txMock.delivery.create.mockResolvedValue(delivery);
-
-      txMock.deliveryEvent.create.mockResolvedValue({
-        id: 'event-1',
-        deliveryId,
-        type: DeliveryEventType.CREATED,
-      });
+      txMock.deliveryEvent.create.mockResolvedValue({ id: 'event-1' });
 
       await service.createDelivery(orderId);
 
@@ -224,14 +225,304 @@ describe('DeliveryService', () => {
     });
   });
 
-  describe('getCustomerTracking', () => {
-    const customerId = 'customer-1';
+  describe('updateRiderLocation', () => {
+    const makeDto = (
+      overrides: Partial<UpdateDeliveryLocationDto> = {},
+    ): UpdateDeliveryLocationDto => ({
+      latitude: 28.5355,
+      longitude: 77.391,
+      accuracyMeters: 12,
+      recordedAt: new Date().toISOString(),
+      ...overrides,
+    });
 
+    const makeActiveDelivery = (
+      overrides: Record<string, unknown> = {},
+    ) => ({
+      id: deliveryId,
+      riderId,
+      status: DeliveryStatus.OUT_FOR_DELIVERY,
+      riderLocationRecordedAt: null,
+      ...overrides,
+    });
+
+    const arrangeAssignedRider = () => {
+      prismaMock.rider.findUnique.mockResolvedValue({ id: riderId });
+    };
+
+    const arrangeActiveDelivery = (
+      overrides: Record<string, unknown> = {},
+    ) => {
+      prismaMock.delivery.findUnique.mockResolvedValue(
+        makeActiveDelivery(overrides),
+      );
+    };
+
+    it('should persist a valid rider location and emit a realtime event', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery();
+
+      prismaMock.delivery.updateMany.mockResolvedValue({ count: 1 });
+
+      const dto = makeDto();
+      const result = await service.updateRiderLocation(
+        deliveryId,
+        riderUserId,
+        dto,
+      );
+
+      expect(prismaMock.rider.findUnique).toHaveBeenCalledWith({
+        where: { userId: riderUserId },
+        select: { id: true },
+      });
+
+      expect(prismaMock.delivery.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: deliveryId,
+            riderId,
+            status: {
+              in: [
+                DeliveryStatus.ASSIGNED,
+                DeliveryStatus.RIDER_ACCEPTED,
+                DeliveryStatus.ARRIVED_AT_RESTAURANT,
+                DeliveryStatus.PICKED_UP,
+                DeliveryStatus.OUT_FOR_DELIVERY,
+              ],
+            },
+          }),
+          data: expect.objectContaining({
+            riderLatitude: dto.latitude,
+            riderLongitude: dto.longitude,
+            riderLocationAccuracyMeters: dto.accuracyMeters,
+            riderLocationRecordedAt: new Date(dto.recordedAt),
+          }),
+        }),
+      );
+
+      expect(result.deliveryId).toBe(deliveryId);
+      expect(result.location).toEqual(
+        expect.objectContaining({
+          latitude: dto.latitude,
+          longitude: dto.longitude,
+          accuracyMeters: dto.accuracyMeters,
+          recordedAt: new Date(dto.recordedAt).toISOString(),
+        }),
+      );
+      expect(result.location.receivedAt).toEqual(expect.any(String));
+
+      expect(deliveryRealtimeMock.emitToDelivery).toHaveBeenCalledWith(
+        deliveryId,
+        expect.objectContaining({
+          event: 'delivery:locationUpdated',
+          data: {
+            location: expect.objectContaining({
+              latitude: dto.latitude,
+              longitude: dto.longitude,
+            }),
+          },
+        }),
+      );
+    });
+
+    it('should reject a user who is not registered as a rider', async () => {
+      prismaMock.rider.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto(),
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(prismaMock.delivery.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should throw when the delivery does not exist', async () => {
+      arrangeAssignedRider();
+      prismaMock.delivery.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto(),
+        ),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a rider who is not assigned to the delivery', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery({ riderId: 'different-rider' });
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto(),
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should reject location updates for an inactive delivery', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery({ status: DeliveryStatus.DELIVERED });
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto(),
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a timestamp too far in the future', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery();
+
+      const futureTimestamp = new Date(
+        Date.now() + 2 * 60_000,
+      ).toISOString();
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto({ recordedAt: futureTimestamp }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a timestamp older than five minutes', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery();
+
+      const oldTimestamp = new Date(
+        Date.now() - 6 * 60_000,
+      ).toISOString();
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto({ recordedAt: oldTimestamp }),
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a timestamp that is not newer than the saved location', async () => {
+      arrangeAssignedRider();
+
+      const previousTimestamp = new Date(
+        Date.now() - 30_000,
+      );
+
+      arrangeActiveDelivery({
+        riderLocationRecordedAt: previousTimestamp,
+      });
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto({
+            recordedAt: previousTimestamp.toISOString(),
+          }),
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(prismaMock.delivery.updateMany).not.toHaveBeenCalled();
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should reject an update superseded by a concurrent newer update', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery();
+
+      prismaMock.delivery.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto(),
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should save null accuracy when accuracy is omitted', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery();
+
+      prismaMock.delivery.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.updateRiderLocation(
+        deliveryId,
+        riderUserId,
+        makeDto({ accuracyMeters: undefined }),
+      );
+
+      expect(prismaMock.delivery.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            riderLocationAccuracyMeters: null,
+          }),
+        }),
+      );
+    });
+
+    it('should not emit realtime location when the database update fails', async () => {
+      arrangeAssignedRider();
+      arrangeActiveDelivery();
+
+      prismaMock.delivery.updateMany.mockRejectedValue(
+        new Error('Database unavailable'),
+      );
+
+      await expect(
+        service.updateRiderLocation(
+          deliveryId,
+          riderUserId,
+          makeDto(),
+        ),
+      ).rejects.toThrow('Database unavailable');
+
+      expect(deliveryRealtimeMock.emitToDelivery).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCustomerTracking', () => {
     const trackingDelivery = {
       id: deliveryId,
       orderId,
       status: DeliveryStatus.OUT_FOR_DELIVERY,
-      riderId: 'rider-1',
+      riderId,
+      riderLatitude: null,
+      riderLongitude: null,
+      riderLocationAccuracyMeters: null,
+      riderLocationRecordedAt: null,
+      riderLocationReceivedAt: null,
       createdAt: new Date('2026-09-27T10:00:00.000Z'),
       updatedAt: new Date('2026-09-27T10:30:00.000Z'),
       order: {
@@ -251,11 +542,11 @@ describe('DeliveryService', () => {
         deliveryInstructions: 'Call before arriving',
       },
       rider: {
-        id: 'rider-1',
+        id: riderId,
         vehicleType: 'BIKE',
         vehicleNumber: 'UP16AB1234',
         user: {
-          id: 'rider-user-1',
+          id: riderUserId,
           name: 'Rider One',
           phone: '8888888888',
         },
@@ -266,18 +557,11 @@ describe('DeliveryService', () => {
       prismaMock.delivery.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.getCustomerTracking(
-          deliveryId,
-          customerId,
-        ),
+        service.getCustomerTracking(deliveryId, customerId),
       ).rejects.toThrow(NotFoundException);
 
-      expect(
-        prismaMock.delivery.findUnique,
-      ).toHaveBeenCalledWith({
-        where: {
-          id: deliveryId,
-        },
+      expect(prismaMock.delivery.findUnique).toHaveBeenCalledWith({
+        where: { id: deliveryId },
         include: {
           order: {
             select: {
@@ -325,17 +609,12 @@ describe('DeliveryService', () => {
       });
 
       await expect(
-        service.getCustomerTracking(
-          deliveryId,
-          customerId,
-        ),
+        service.getCustomerTracking(deliveryId, customerId),
       ).rejects.toThrow(ConflictException);
     });
 
     it('should return tracking information for the owning customer', async () => {
-      prismaMock.delivery.findUnique.mockResolvedValue(
-        trackingDelivery,
-      );
+      prismaMock.delivery.findUnique.mockResolvedValue(trackingDelivery);
 
       const result = await service.getCustomerTracking(
         deliveryId,
@@ -347,15 +626,13 @@ describe('DeliveryService', () => {
         orderId,
         status: DeliveryStatus.OUT_FOR_DELIVERY,
         riderLocation: null,
-
         rider: {
-          id: 'rider-1',
+          id: riderId,
           name: 'Rider One',
           phone: '8888888888',
           vehicleType: 'BIKE',
           vehicleNumber: 'UP16AB1234',
         },
-
         deliveryAddress: {
           label: 'Home',
           contactName: 'Aditya',
@@ -370,7 +647,6 @@ describe('DeliveryService', () => {
           longitude: 77.391,
           instructions: 'Call before arriving',
         },
-
         timestamps: {
           createdAt: trackingDelivery.createdAt,
           updatedAt: trackingDelivery.updatedAt,
@@ -393,24 +669,18 @@ describe('DeliveryService', () => {
     });
 
     it('should return the current delivery status', async () => {
-      prismaMock.delivery.findUnique.mockResolvedValue(
-        trackingDelivery,
-      );
+      prismaMock.delivery.findUnique.mockResolvedValue(trackingDelivery);
 
       const result = await service.getCustomerTracking(
         deliveryId,
         customerId,
       );
 
-      expect(result.status).toBe(
-        DeliveryStatus.OUT_FOR_DELIVERY,
-      );
+      expect(result.status).toBe(DeliveryStatus.OUT_FOR_DELIVERY);
     });
 
     it('should return the delivery address snapshot', async () => {
-      prismaMock.delivery.findUnique.mockResolvedValue(
-        trackingDelivery,
-      );
+      prismaMock.delivery.findUnique.mockResolvedValue(trackingDelivery);
 
       const result = await service.getCustomerTracking(
         deliveryId,
@@ -434,9 +704,7 @@ describe('DeliveryService', () => {
     });
 
     it('should return rider information when a rider is assigned', async () => {
-      prismaMock.delivery.findUnique.mockResolvedValue(
-        trackingDelivery,
-      );
+      prismaMock.delivery.findUnique.mockResolvedValue(trackingDelivery);
 
       const result = await service.getCustomerTracking(
         deliveryId,
@@ -444,7 +712,7 @@ describe('DeliveryService', () => {
       );
 
       expect(result.rider).toEqual({
-        id: 'rider-1',
+        id: riderId,
         name: 'Rider One',
         phone: '8888888888',
         vehicleType: 'BIKE',
@@ -453,9 +721,7 @@ describe('DeliveryService', () => {
     });
 
     it('should return delivery timestamps', async () => {
-      prismaMock.delivery.findUnique.mockResolvedValue(
-        trackingDelivery,
-      );
+      prismaMock.delivery.findUnique.mockResolvedValue(trackingDelivery);
 
       const result = await service.getCustomerTracking(
         deliveryId,
@@ -467,5 +733,62 @@ describe('DeliveryService', () => {
         updatedAt: trackingDelivery.updatedAt,
       });
     });
+
+    it('should return the rider GPS location when a location is available', async () => {
+      const recordedAt = new Date(Date.now() - 10_000);
+      const receivedAt = new Date(Date.now() - 5_000);
+
+      prismaMock.delivery.findUnique.mockResolvedValue({
+        ...trackingDelivery,
+        riderLatitude: 28.5355,
+        riderLongitude: 77.391,
+        riderLocationAccuracyMeters: 12,
+        riderLocationRecordedAt: recordedAt,
+        riderLocationReceivedAt: receivedAt,
+      });
+
+      const result = await service.getCustomerTracking(
+        deliveryId,
+        customerId,
+      );
+
+      expect(result.riderLocation).toEqual({
+        latitude: 28.5355,
+        longitude: 77.391,
+        accuracyMeters: 12,
+        recordedAt: recordedAt.toISOString(),
+        receivedAt: receivedAt.toISOString(),
+        isStale: false,
+      });
+    });
+
+    it('should mark the rider GPS location as stale when it is older than 60 seconds', async () => {
+      const recordedAt = new Date(Date.now() - 120_000);
+      const receivedAt = new Date(Date.now() - 90_000);
+
+      prismaMock.delivery.findUnique.mockResolvedValue({
+        ...trackingDelivery,
+        riderLatitude: 28.5355,
+        riderLongitude: 77.391,
+        riderLocationAccuracyMeters: 25,
+        riderLocationRecordedAt: recordedAt,
+        riderLocationReceivedAt: receivedAt,
+      });
+
+      const result = await service.getCustomerTracking(
+        deliveryId,
+        customerId,
+      );
+
+      expect(result.riderLocation).toEqual({
+        latitude: 28.5355,
+        longitude: 77.391,
+        accuracyMeters: 25,
+        recordedAt: recordedAt.toISOString(),
+        receivedAt: receivedAt.toISOString(),
+        isStale: true,
+      });
+    });
+
   });
 });
