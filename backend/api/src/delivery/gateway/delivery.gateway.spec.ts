@@ -73,9 +73,12 @@ describe('DeliveryGateway', () => {
 
     gateway.handleConnection(client);
 
-    expect(jwtService.verify).toHaveBeenCalledWith(
-      'jwt-token',
-    );
+   expect(jwtService.verify).toHaveBeenCalledWith(
+  'jwt-token',
+  {
+    algorithms: ['HS256'],
+  },
+);
 
     expect(client.data).toEqual({
       user: {
@@ -107,8 +110,11 @@ describe('DeliveryGateway', () => {
     gateway.handleConnection(client);
 
     expect(jwtService.verify).toHaveBeenCalledWith(
-      'jwt-token',
-    );
+  'jwt-token',
+  {
+    algorithms: ['HS256'],
+  },
+);
 
     expect(client.data).toEqual({
       user: {
@@ -154,9 +160,12 @@ describe('DeliveryGateway', () => {
 
     gateway.handleConnection(client);
 
-    expect(jwtService.verify).toHaveBeenCalledWith(
-      'invalid-token',
-    );
+  expect(jwtService.verify).toHaveBeenCalledWith(
+  'invalid-token',
+  {
+    algorithms: ['HS256'],
+  },
+);
 
     expect(client.disconnect).toHaveBeenCalledWith(true);
   });

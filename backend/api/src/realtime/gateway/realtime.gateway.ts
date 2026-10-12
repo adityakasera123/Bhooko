@@ -1,3 +1,4 @@
+import { getCorsOrigins } from '../../config/cors.config';
 import {
   ConnectedSocket,
   OnGatewayConnection,
@@ -31,7 +32,19 @@ interface AuthenticatedSocket extends Socket {
 @WebSocketGateway({
   namespace: '/realtime',
   cors: {
-    origin: '*',
+    origin: (origin, callback) => {
+      try {
+        const allowedOrigins = getCorsOrigins();
+        callback(null, !origin || allowedOrigins.includes(origin));
+      } catch (error) {
+        callback(
+          error instanceof Error
+            ? error
+            : new Error('CORS configuration failed'),
+        );
+      }
+    },
+    credentials: true,
   },
 })
 export class RealtimeGateway

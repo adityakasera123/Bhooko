@@ -46,6 +46,8 @@ import { NotificationsModule } from './notifications/notifications.module';
 
         JWT_ACCESS_EXPIRES_IN: Joi.string()
           .default('15m'),
+
+        CORS_ORIGINS: Joi.string().optional(),
       }),
     }),
 

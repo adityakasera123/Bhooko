@@ -23,6 +23,7 @@ import { TokenService } from './token.service';
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
         signOptions: {
+          algorithm: 'HS256',
           expiresIn:
             configService.get<string>(
               'JWT_ACCESS_EXPIRES_IN',

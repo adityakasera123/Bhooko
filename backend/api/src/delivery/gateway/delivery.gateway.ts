@@ -1,3 +1,4 @@
+import { getCorsOrigins } from '../../config/cors.config';
 import {
   ConnectedSocket,
   OnGatewayConnection,
@@ -30,7 +31,19 @@ interface AuthenticatedSocket extends Socket {
 @WebSocketGateway({
   namespace: '/delivery',
   cors: {
-    origin: '*',
+    origin: (origin, callback) => {
+      try {
+        const allowedOrigins = getCorsOrigins();
+        callback(null, !origin || allowedOrigins.includes(origin));
+      } catch (error) {
+        callback(
+          error instanceof Error
+            ? error
+            : new Error('CORS configuration failed'),
+        );
+      }
+    },
+    credentials: true,
   },
 })
 export class DeliveryGateway
@@ -62,7 +75,9 @@ export class DeliveryGateway
 
     try {
       const payload =
-        this.jwtService.verify<JwtPayload>(token);
+     this.jwtService.verify<JwtPayload>(token, {
+  algorithms: ['HS256'],
+});
 
       if (!payload.sub || !payload.role) {
         client.disconnect(true);

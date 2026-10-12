@@ -12,10 +12,13 @@ interface JwtPayload {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(configService: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
-    });
+  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  ignoreExpiration: false,
+  secretOrKey: configService.getOrThrow<string>(
+    'JWT_ACCESS_SECRET',
+  ),
+  algorithms: ['HS256'],
+});
   }
 
   validate(payload: JwtPayload) {

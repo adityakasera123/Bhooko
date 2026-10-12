@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -9,7 +10,6 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { CreateDeliveryDto } from './dto/create-delivery.dto';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { DeliveryService } from './delivery.service';
 
@@ -18,13 +18,6 @@ export class DeliveryController {
   constructor(
     private readonly deliveryService: DeliveryService,
   ) {}
-
-  @Post()
-  async createDelivery(
-    @Body() dto: CreateDeliveryDto,
-  ) {
-    return this.deliveryService.createDelivery(dto.orderId);
-  }
 
   @Post(':deliveryId/location')
   @UseGuards(JwtAuthGuard)
