@@ -10,6 +10,7 @@ import {
 
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { CreateDeliveryDto } from './dto/create-delivery.dto';
+import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 import { DeliveryService } from './delivery.service';
 
 @Controller('delivery')
@@ -23,6 +24,20 @@ export class DeliveryController {
     @Body() dto: CreateDeliveryDto,
   ) {
     return this.deliveryService.createDelivery(dto.orderId);
+  }
+
+  @Post(':deliveryId/location')
+  @UseGuards(JwtAuthGuard)
+  async updateRiderLocation(
+    @Param('deliveryId') deliveryId: string,
+    @Body() dto: UpdateDeliveryLocationDto,
+    @Req() req: any,
+  ) {
+    return this.deliveryService.updateRiderLocation(
+      deliveryId,
+      req.user.userId,
+      dto,
+    );
   }
 
   @Get(':deliveryId')

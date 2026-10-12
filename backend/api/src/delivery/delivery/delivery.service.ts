@@ -1,15 +1,22 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { DeliveryStatus, DeliveryEventType } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
+import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
 
 @Injectable()
 export class DeliveryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly deliveryRealtime: DeliveryRealtimeService,
+  ) {}
 
   async createDelivery(orderId: string) {
     const order = await this.prisma.order.findUnique({
@@ -51,6 +58,130 @@ export class DeliveryService {
 
       return delivery;
     });
+  }
+
+  async updateRiderLocation(
+    deliveryId: string,
+    userId: string,
+    dto: UpdateDeliveryLocationDto,
+  ) {
+    const rider = await this.prisma.rider.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!rider) {
+      throw new ForbiddenException('Only an assigned rider can update location');
+    }
+
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      select: {
+        id: true,
+        riderId: true,
+        status: true,
+        riderLocationRecordedAt: true,
+      },
+    });
+
+    if (!delivery) {
+      throw new NotFoundException('Delivery not found');
+    }
+
+    if (delivery.riderId !== rider.id) {
+      throw new ForbiddenException(
+        'You are not the assigned rider for this delivery',
+      );
+    }
+
+    const activeStatuses: DeliveryStatus[] = [
+      DeliveryStatus.ASSIGNED,
+      DeliveryStatus.RIDER_ACCEPTED,
+      DeliveryStatus.ARRIVED_AT_RESTAURANT,
+      DeliveryStatus.PICKED_UP,
+      DeliveryStatus.OUT_FOR_DELIVERY,
+    ];
+
+    if (!activeStatuses.includes(delivery.status)) {
+      throw new ConflictException(
+        'Location updates are not allowed for this delivery status',
+      );
+    }
+
+    const recordedAt = new Date(dto.recordedAt);
+    const now = new Date();
+    const futureToleranceMs = 60_000;
+    const maxAgeMs = 5 * 60_000;
+
+    if (recordedAt.getTime() > now.getTime() + futureToleranceMs) {
+      throw new BadRequestException(
+        'Location timestamp cannot be more than 60 seconds in the future',
+      );
+    }
+
+    if (recordedAt.getTime() < now.getTime() - maxAgeMs) {
+      throw new BadRequestException(
+        'Location timestamp is too old; submit a fresh GPS reading',
+      );
+    }
+
+    if (
+      delivery.riderLocationRecordedAt &&
+      recordedAt.getTime() <= delivery.riderLocationRecordedAt.getTime()
+    ) {
+      throw new ConflictException(
+        'Out-of-order location update rejected',
+      );
+    }
+
+    const receivedAt = new Date();
+
+    // The conditional update prevents a concurrent older reading from
+    // overwriting a newer accepted reading.
+    const updated = await this.prisma.delivery.updateMany({
+      where: {
+        id: deliveryId,
+        riderId: rider.id,
+        status: { in: activeStatuses },
+        OR: [
+          { riderLocationRecordedAt: null },
+          { riderLocationRecordedAt: { lt: recordedAt } },
+        ],
+      },
+      data: {
+        riderLatitude: dto.latitude,
+        riderLongitude: dto.longitude,
+        riderLocationAccuracyMeters: dto.accuracyMeters ?? null,
+        riderLocationRecordedAt: recordedAt,
+        riderLocationReceivedAt: receivedAt,
+      },
+    });
+
+    if (updated.count !== 1) {
+      throw new ConflictException(
+        'Location update was superseded or delivery is no longer active',
+      );
+    }
+
+    const location = {
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      accuracyMeters: dto.accuracyMeters ?? null,
+      recordedAt: recordedAt.toISOString(),
+      receivedAt: receivedAt.toISOString(),
+    };
+
+    // Emit only after the database confirms the update was accepted.
+    this.deliveryRealtime.emitToDelivery(deliveryId, {
+      event: 'delivery:locationUpdated',
+      timestamp: receivedAt.toISOString(),
+      data: { location },
+    });
+
+    return {
+      deliveryId,
+      location,
+    };
   }
 
  async getCustomerTracking(
@@ -107,10 +238,30 @@ export class DeliveryService {
     );
   }
 
+  const hasRiderLocation =
+    delivery.riderLatitude != null &&
+    delivery.riderLongitude != null &&
+    delivery.riderLocationRecordedAt != null &&
+    delivery.riderLocationReceivedAt != null;
+
+  const riderLocation = hasRiderLocation
+    ? {
+        latitude: delivery.riderLatitude,
+        longitude: delivery.riderLongitude,
+        accuracyMeters: delivery.riderLocationAccuracyMeters,
+        recordedAt: delivery.riderLocationRecordedAt!.toISOString(),
+        receivedAt: delivery.riderLocationReceivedAt!.toISOString(),
+        isStale:
+          Date.now() - delivery.riderLocationReceivedAt!.getTime() >
+          60_000,
+      }
+    : null;
+
   return {
     deliveryId: delivery.id,
     orderId: delivery.order.id,
     status: delivery.status,
+    riderLocation,
 
     rider: delivery.rider
       ? {

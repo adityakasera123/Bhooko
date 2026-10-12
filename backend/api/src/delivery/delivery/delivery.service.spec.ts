@@ -346,6 +346,7 @@ describe('DeliveryService', () => {
         deliveryId,
         orderId,
         status: DeliveryStatus.OUT_FOR_DELIVERY,
+        riderLocation: null,
 
         rider: {
           id: 'rider-1',
