@@ -1,8 +1,10 @@
+
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import Joi from 'joi';
+
 import { UsersModule } from './users/users.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { RestaurantsModule } from './restaurants/restaurants.module';
@@ -18,8 +20,12 @@ import { PrismaModule } from './prisma/prisma.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DeliveryModule } from './delivery/delivery/delivery.module';
+import { RiderModule } from './delivery/rider/rider.module';
+import { AssignmentModule } from './delivery/assignment/assignment.module';
 import { ServiceabilityModule } from './serviceability/serviceability.module';
 import { NotificationsModule } from './notifications/notifications.module';
+
+import { HttpThrottlerGuard } from './common/guards/http-throttler.guard';
 
 @Module({
   imports: [
@@ -70,15 +76,19 @@ import { NotificationsModule } from './notifications/notifications.module';
     OrdersModule,
     PaymentsModule,
     DeliveryModule,
+    RiderModule,
+    AssignmentModule,
     ServiceabilityModule,
     NotificationsModule,
   ],
+
   controllers: [AppController],
+
   providers: [
     AppService,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: HttpThrottlerGuard,
     },
   ],
 })

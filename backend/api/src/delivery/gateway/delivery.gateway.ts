@@ -1,3 +1,4 @@
+
 import { getCorsOrigins } from '../../config/cors.config';
 import {
   ConnectedSocket,
@@ -5,6 +6,7 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
   SubscribeMessage,
+  MessageBody,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -47,10 +49,7 @@ interface AuthenticatedSocket extends Socket {
   },
 })
 export class DeliveryGateway
-  implements
-    OnGatewayConnection,
-    OnGatewayDisconnect,
-    OnGatewayInit
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
 {
   @WebSocketServer()
   server!: Server;
@@ -62,36 +61,59 @@ export class DeliveryGateway
   ) {}
 
   afterInit(server: Server) {
+    console.log('[DeliveryGateway] initialized: /delivery');
     this.realtimeService.setServer(server);
   }
 
   handleConnection(client: Socket) {
+    console.log(
+      '[DeliveryGateway] connection attempt:',
+      client.id,
+    );
+
     const token = this.extractToken(client);
 
     if (!token) {
+      console.warn(
+        '[DeliveryGateway] connection rejected: missing token',
+        client.id,
+      );
       client.disconnect(true);
       return;
     }
 
     try {
-      const payload =
-     this.jwtService.verify<JwtPayload>(token, {
-  algorithms: ['HS256'],
-});
+      const payload = this.jwtService.verify<JwtPayload>(token, {
+        algorithms: ['HS256'],
+      });
 
       if (!payload.sub || !payload.role) {
+        console.warn(
+          '[DeliveryGateway] connection rejected: invalid JWT payload',
+          client.id,
+        );
         client.disconnect(true);
         return;
       }
 
-      const authenticatedClient =
-        client as AuthenticatedSocket;
+      const authenticatedClient = client as AuthenticatedSocket;
 
       authenticatedClient.data.user = {
         userId: payload.sub,
         role: payload.role,
       };
+
+      console.log(
+        '[DeliveryGateway] authenticated:',
+        client.id,
+        'role:',
+        payload.role,
+      );
     } catch {
+      console.warn(
+        '[DeliveryGateway] connection rejected: JWT verification failed',
+        client.id,
+      );
       client.disconnect(true);
     }
   }
@@ -99,9 +121,22 @@ export class DeliveryGateway
   @SubscribeMessage('joinDelivery')
   async handleJoinDelivery(
     @ConnectedSocket() client: AuthenticatedSocket,
-    payload: { deliveryId?: string },
+    @MessageBody() payload: { deliveryId?: string },
   ) {
+    console.log(
+  '[DeliveryGateway] raw joinDelivery payload:',
+  JSON.stringify(payload),
+  'type:',
+  typeof payload,
+);
     const deliveryId = payload?.deliveryId;
+
+    console.log(
+      '[DeliveryGateway] joinDelivery received:',
+      client.id,
+      'deliveryId:',
+      deliveryId ?? 'missing',
+    );
 
     if (!deliveryId) {
       return {
@@ -126,19 +161,24 @@ export class DeliveryGateway
     }
 
     try {
-      const allowed =
-        await this.realtimeAuth.canJoinDelivery(
-          deliveryId,
-          user.userId,
-          user.role,
-        );
+      const allowed = await this.realtimeAuth.canJoinDelivery(
+        deliveryId,
+        user.userId,
+        user.role,
+      );
 
       if (!allowed) {
+        console.warn(
+          '[DeliveryGateway] delivery room access denied:',
+          deliveryId,
+          'user:',
+          user.userId,
+        );
+
         return {
           event: 'joinDelivery:error',
           data: {
-            message:
-              'You are not authorized to join this delivery',
+            message: 'You are not authorized to join this delivery',
           },
         };
       }
@@ -146,6 +186,17 @@ export class DeliveryGateway
       const room = `delivery:${deliveryId}`;
 
       await client.join(room);
+      console.log('[DeliveryGateway] sending join success acknowledgement:', {
+  deliveryId,
+  room,
+});
+
+      console.log(
+        '[DeliveryGateway] joined room:',
+        room,
+        'socket:',
+        client.id,
+      );
 
       return {
         event: 'joinDelivery:success',
@@ -154,7 +205,12 @@ export class DeliveryGateway
           room,
         },
       };
-    } catch {
+    } catch (error) {
+      console.error(
+        '[DeliveryGateway] failed to join delivery:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+
       return {
         event: 'joinDelivery:error',
         data: {
@@ -165,22 +221,22 @@ export class DeliveryGateway
   }
 
   handleDisconnect(client: Socket) {
-    // Socket.IO automatically removes the client
-    // from all rooms when it disconnects.
+    console.log(
+      '[DeliveryGateway] disconnected:',
+      client.id,
+      'reason:',
+      client.disconnected ? 'disconnected' : 'unknown',
+    );
   }
 
   private extractToken(client: Socket): string | null {
     const authToken = client.handshake.auth?.token;
 
-    if (
-      typeof authToken === 'string' &&
-      authToken.length > 0
-    ) {
+    if (typeof authToken === 'string' && authToken.length > 0) {
       return this.normalizeToken(authToken);
     }
 
-    const authorization =
-      client.handshake.headers.authorization;
+    const authorization = client.handshake.headers.authorization;
 
     if (typeof authorization === 'string') {
       return this.normalizeToken(authorization);

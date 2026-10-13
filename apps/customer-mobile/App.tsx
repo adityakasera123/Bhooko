@@ -1,9 +1,11 @@
-
 import { useState } from 'react';
+
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
   ActivityIndicator,
   Alert,
@@ -11,9 +13,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+
+import TrackingScreen from './src/screens/tracking/TrackingScreen';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -28,6 +33,68 @@ export default function App() {
   const [pushToken, setPushToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [permission, setPermission] = useState('Not requested');
+
+  const [deliveryIdInput, setDeliveryIdInput] = useState('');
+  const [trackingDeliveryId, setTrackingDeliveryId] = useState('');
+
+  // Customer authentication for development testing.
+  const [accessTokenInput, setAccessTokenInput] = useState('');
+  const [savingToken, setSavingToken] = useState(false);
+  const [tokenSaved, setTokenSaved] = useState(false);
+
+  async function saveCustomerToken() {
+    const token = accessTokenInput.trim();
+
+    if (!token) {
+      Alert.alert(
+        'Missing token',
+        'Enter your customer access token first.',
+      );
+      return;
+    }
+
+    setSavingToken(true);
+
+    try {
+      await AsyncStorage.setItem('bhooko.accessToken', token);
+
+      setAccessTokenInput('');
+      setTokenSaved(true);
+
+      Alert.alert(
+        'Customer session saved',
+        'Your access token has been saved on this device.',
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to save the customer session.';
+
+      Alert.alert('Save failed', message);
+    } finally {
+      setSavingToken(false);
+    }
+  }
+
+  async function clearCustomerToken() {
+    try {
+      await AsyncStorage.removeItem('bhooko.accessToken');
+      setTokenSaved(false);
+
+      Alert.alert(
+        'Session cleared',
+        'The saved customer access token has been removed.',
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to clear the customer session.';
+
+      Alert.alert('Error', message);
+    }
+  }
 
   async function registerForPushNotifications() {
     setLoading(true);
@@ -92,14 +159,21 @@ export default function App() {
   }
 
   async function testLocalNotification() {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'BHOOKO Test',
-        body: 'Bhai, local notification successfully aa gayi! 🎉',
-        sound: 'default',
-      },
-      trigger: null,
-    });
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'BHOOKO Test',
+          body: 'Bhai, local notification successfully aa gayi! 🎉',
+          sound: 'default',
+        },
+        trigger: null,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown error';
+
+      Alert.alert('Notification error', message);
+    }
   }
 
   async function copyToken() {
@@ -114,43 +188,198 @@ export default function App() {
     }
   }
 
+  function openTracking() {
+    const id = deliveryIdInput.trim();
+
+    if (!id) {
+      Alert.alert(
+        'Delivery ID required',
+        'Tracking test karne ke liye delivery ID enter karo.',
+      );
+      return;
+    }
+
+    setTrackingDeliveryId(id);
+  }
+
+  if (trackingDeliveryId) {
+    return (
+      <View style={styles.trackingContainer}>
+        <StatusBar style="dark" />
+
+        <View style={styles.trackingHeader}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setTrackingDeliveryId('')}
+          >
+            <Text style={styles.backButtonText}>
+              ← Back to Test Screen
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TrackingScreen deliveryId={trackingDeliveryId} />
+      </View>
+    );
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <StatusBar style="dark" />
 
       <Text style={styles.logo}>BHOOKO</Text>
-      <Text style={styles.heading}>Push Notification Test</Text>
+
+      <Text style={styles.heading}>Development Test Panel</Text>
+
       <Text style={styles.description}>
-        Android device par notification permission aur Expo Push Token test
-        karo.
+        Push notifications aur delivery tracking ko test karne ke liye
+        temporary development screen.
       </Text>
 
+      {/* Customer authentication */}
       <View style={styles.card}>
-        <Text style={styles.label}>Notification Permission</Text>
-        <Text style={styles.value}>{permission}</Text>
+        <Text style={styles.sectionTitle}>
+          Customer Session Test
+        </Text>
+
+        <Text style={styles.label}>
+          Customer Access Token
+        </Text>
+
+        <TextInput
+          value={accessTokenInput}
+          onChangeText={setAccessTokenInput}
+          placeholder="Paste customer access token"
+          placeholderTextColor="#9A8D85"
+          autoCapitalize="none"
+          autoCorrect={false}
+          multiline
+          textAlignVertical="top"
+          secureTextEntry
+          style={[styles.deliveryInput, styles.tokenInput]}
+        />
+
+        <TouchableOpacity
+          style={[
+            styles.primaryButton,
+            savingToken && styles.disabledButton,
+          ]}
+          onPress={saveCustomerToken}
+          disabled={savingToken}
+        >
+          {savingToken ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>
+              Save Customer Session
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {tokenSaved ? (
+          <View style={styles.sessionStatus}>
+            <Text style={styles.sessionStatusText}>
+              Customer token saved on this device.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={clearCustomerToken}
+            >
+              <Text style={styles.secondaryButtonText}>
+                Clear Customer Session
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.helperText}>
+            Enter a valid customer access token. The token is saved locally
+            and is not displayed after saving.
+          </Text>
+        )}
+      </View>
+
+      {/* Delivery tracking */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>
+          Delivery Tracking Test
+        </Text>
+
+        <Text style={styles.label}>Delivery ID</Text>
+
+        <TextInput
+          value={deliveryIdInput}
+          onChangeText={setDeliveryIdInput}
+          placeholder="Enter actual delivery ID"
+          placeholderTextColor="#9A8D85"
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={styles.deliveryInput}
+        />
 
         <TouchableOpacity
           style={styles.primaryButton}
+          onPress={openTracking}
+        >
+          <Text style={styles.buttonText}>
+            Open Delivery Tracking
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.helperText}>
+          A valid delivery ID and an authorized customer access token are
+          required.
+        </Text>
+      </View>
+
+      {/* Push notification permission and token */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>
+          Push Notification Test
+        </Text>
+
+        <Text style={styles.label}>
+          Notification Permission
+        </Text>
+
+        <Text style={styles.value}>{permission}</Text>
+
+        <TouchableOpacity
+          style={[
+            styles.primaryButton,
+            loading && styles.disabledButton,
+          ]}
           onPress={registerForPushNotifications}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>Get Expo Push Token</Text>
+            <Text style={styles.buttonText}>
+              Get Expo Push Token
+            </Text>
           )}
         </TouchableOpacity>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.label}>Expo Push Token</Text>
+
         <Text selectable style={styles.token}>
           {pushToken || 'Token abhi generate nahi hua.'}
         </Text>
 
         {pushToken ? (
-          <TouchableOpacity style={styles.secondaryButton} onPress={copyToken}>
-            <Text style={styles.secondaryButtonText}>Copy Token</Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={copyToken}
+          >
+            <Text style={styles.secondaryButtonText}>
+              Copy Token
+            </Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -159,12 +388,15 @@ export default function App() {
         style={styles.localButton}
         onPress={testLocalNotification}
       >
-        <Text style={styles.buttonText}>Test Local Notification</Text>
+        <Text style={styles.buttonText}>
+          Test Local Notification
+        </Text>
       </TouchableOpacity>
 
       <Text style={styles.note}>
-        Local notification phone par hi schedule hoti hai. Remote push ke liye
-        Expo Push Token aur backend registration alag se test karenge.
+        Local notification phone par hi schedule hoti hai. Remote push ke
+        liye Expo Push Token registration aur backend delivery alag se test
+        karenge.
       </Text>
     </ScrollView>
   );
@@ -177,6 +409,29 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: '#FFF8F2',
   },
+
+  trackingContainer: {
+    flex: 1,
+    backgroundColor: '#FFF8F2',
+  },
+
+  trackingHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+  },
+
+  backButtonText: {
+    color: '#C74718',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
   logo: {
     color: '#F15A24',
     fontSize: 34,
@@ -184,6 +439,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 2,
   },
+
   heading: {
     marginTop: 12,
     fontSize: 23,
@@ -191,6 +447,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#211B18',
   },
+
   description: {
     marginTop: 8,
     marginBottom: 24,
@@ -198,6 +455,7 @@ const styles = StyleSheet.create({
     color: '#70645E',
     lineHeight: 21,
   },
+
   card: {
     padding: 18,
     marginBottom: 16,
@@ -206,23 +464,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F0E3DA',
   },
+
+  sectionTitle: {
+    color: '#211B18',
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 16,
+  },
+
   label: {
     color: '#70645E',
     fontSize: 13,
     fontWeight: '600',
   },
+
   value: {
     marginTop: 6,
     marginBottom: 16,
     fontSize: 16,
     color: '#211B18',
   },
-  token: {
+
+  deliveryInput: {
+    minHeight: 48,
     marginTop: 10,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#F0E3DA',
+    borderRadius: 10,
+    backgroundColor: '#FFF8F2',
     color: '#211B18',
-    fontSize: 12,
-    lineHeight: 18,
   },
+
+  tokenInput: {
+    minHeight: 70,
+    paddingTop: 12,
+  },
+
   primaryButton: {
     minHeight: 50,
     alignItems: 'center',
@@ -231,11 +510,41 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+
+  disabledButton: {
+    opacity: 0.6,
+  },
+
   buttonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
+
+  helperText: {
+    marginTop: 10,
+    color: '#8A7D75',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  sessionStatus: {
+    marginTop: 12,
+  },
+
+  sessionStatusText: {
+    color: '#237A45',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  token: {
+    marginTop: 10,
+    color: '#211B18',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
   secondaryButton: {
     marginTop: 14,
     padding: 12,
@@ -243,10 +552,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#FFF0E8',
   },
+
   secondaryButtonText: {
     color: '#C74718',
     fontWeight: '700',
   },
+
   localButton: {
     minHeight: 50,
     alignItems: 'center',
@@ -255,6 +566,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+
   note: {
     marginTop: 18,
     color: '#70645E',
