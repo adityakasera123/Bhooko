@@ -25,9 +25,7 @@
   "package": "com.bhooko.customer",
   "googleServicesFile": "./google-services.json",
   "config": {
-    "googleMaps": {
-      "apiKey": "AIzaSyAylLEuYniMNX_m8oppVe7rUGvHHStkj5U"
-    }
+    "googleMaps": {}
   }
 },
     "web": {
