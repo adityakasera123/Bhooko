@@ -2018,6 +2018,7 @@ let notificationsService: {
   relatedEntityType: 'DELIVERY',
   relatedEntityId: 'delivery-123',
 });
+
   });
 
   it('should change delivery status to FAILED', async () => {
