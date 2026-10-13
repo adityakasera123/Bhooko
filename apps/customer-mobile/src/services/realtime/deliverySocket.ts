@@ -1,5 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { io, type Socket } from 'socket.io-client';
+
+import {
+  getAccessToken,
+  refreshAccessToken,
+} from '../auth/authService';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -41,7 +46,7 @@ export async function connectToDelivery(
     throw new Error('A valid delivery ID is required.');
   }
 
-  const accessToken = await AsyncStorage.getItem('bhooko.accessToken');
+  let accessToken = await getAccessToken();
 
   if (!accessToken) {
     throw new Error('Please sign in before tracking your delivery.');
@@ -58,6 +63,7 @@ export async function connectToDelivery(
   );
 
   let initialJoinCompleted = false;
+  let refreshAttempted = false;
 
   return new Promise<Socket>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -74,9 +80,25 @@ export async function connectToDelivery(
       socket.off('connect_error', onInitialConnectionError);
     };
 
-    const onInitialConnectionError = (error: Error) => {
+    const onInitialConnectionError = async (error: Error) => {
       if (initialJoinCompleted) {
         return;
+      }
+
+      // Try refreshing an expired access token only once.
+      if (!refreshAttempted && socket.active) {
+        refreshAttempted = true;
+
+        const refreshedToken = await refreshAccessToken();
+
+        if (refreshedToken) {
+          accessToken = refreshedToken;
+          socket.auth = { token: refreshedToken };
+
+          // Retry the connection using the refreshed token.
+          socket.connect();
+          return;
+        }
       }
 
       cleanupInitialListeners();
@@ -87,46 +109,40 @@ export async function connectToDelivery(
       );
     };
 
+    const onJoinSuccess = (data: {
+      deliveryId: string;
+      room: string;
+    }) => {
+      if (!initialJoinCompleted) {
+        initialJoinCompleted = true;
+        cleanupInitialListeners();
+        resolve(socket);
+      }
+    };
+
+    const onJoinError = async (data: { message?: string }) => {
+      if (initialJoinCompleted) {
+        return;
+      }
+
+      cleanupInitialListeners();
+      socket.disconnect();
+
+      reject(
+        new Error(
+          data?.message ?? 'Unable to join delivery tracking.',
+        ),
+      );
+    };
+
     socket.on('connect_error', onInitialConnectionError);
+    socket.on('joinDelivery:success', onJoinSuccess);
+    socket.on('joinDelivery:error', onJoinError);
 
-    // Join the delivery room after every connection/reconnection.
-   const onJoinSuccess = (data: {
-  deliveryId: string;
-  room: string;
-}) => {
-  console.log('[DeliverySocket] join success event:', data);
-
-  if (!initialJoinCompleted) {
-    initialJoinCompleted = true;
-    cleanupInitialListeners();
-    resolve(socket);
-  }
-};
-
-const onJoinError = (data: { message?: string }) => {
-  console.error('[DeliverySocket] join error event:', data);
-
-  if (!initialJoinCompleted) {
-    cleanupInitialListeners();
-    socket.disconnect();
-
-    reject(
-      new Error(data?.message ?? 'Unable to join delivery tracking.'),
-    );
-  }
-};
-
-socket.on('joinDelivery:success', onJoinSuccess);
-socket.on('joinDelivery:error', onJoinError);
-
-socket.on('connect', () => {
-  console.log('[DeliverySocket] emitting joinDelivery:', {
-    deliveryId,
-    type: typeof deliveryId,
-  });
-
-  socket.emit('joinDelivery', { deliveryId });
-});
+    // Rejoin the delivery room on every connection/reconnection.
+    socket.on('connect', () => {
+      socket.emit('joinDelivery', { deliveryId });
+    });
 
     socket.connect();
   });

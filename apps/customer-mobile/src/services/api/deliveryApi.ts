@@ -1,4 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import {
+  getAccessToken,
+  refreshAccessToken,
+} from '../auth/authService';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -38,6 +42,22 @@ export interface DeliveryTrackingResponse {
   };
 }
 
+async function requestDeliveryTracking(
+  deliveryId: string,
+  accessToken: string,
+): Promise<Response> {
+  return fetch(
+    `${API_BASE_URL!.replace(/\/$/, '')}/delivery/${encodeURIComponent(deliveryId)}`,
+    {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+}
+
 export async function getDeliveryTracking(
   deliveryId: string,
 ): Promise<DeliveryTrackingResponse> {
@@ -47,37 +67,53 @@ export async function getDeliveryTracking(
     );
   }
 
-  const accessToken = await AsyncStorage.getItem('bhooko.accessToken');
+  let accessToken = await getAccessToken();
 
   if (!accessToken) {
     throw new Error('Please sign in before tracking your delivery.');
   }
 
-  const response = await fetch(
-    `${API_BASE_URL.replace(/\/$/, '')}/delivery/${encodeURIComponent(deliveryId)}`,
-    {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
+  let response = await requestDeliveryTracking(
+    deliveryId,
+    accessToken,
   );
+
+  // Refresh once after an expired or invalid access token.
+  if (response.status === 401) {
+    accessToken = await refreshAccessToken();
+
+    if (!accessToken) {
+      throw new Error(
+        'Your session has expired. Please sign in again.',
+      );
+    }
+
+    response = await requestDeliveryTracking(
+      deliveryId,
+      accessToken,
+    );
+  }
 
   if (!response.ok) {
     if (response.status === 401) {
-      throw new Error('Your session has expired. Please sign in again.');
+      throw new Error(
+        'Your session has expired. Please sign in again.',
+      );
     }
 
     if (response.status === 403 || response.status === 409) {
-      throw new Error('You are not authorized to view this delivery.');
+      throw new Error(
+        'You are not authorized to view this delivery.',
+      );
     }
 
     if (response.status === 404) {
       throw new Error('Delivery not found.');
     }
 
-    throw new Error(`Unable to load delivery tracking (${response.status}).`);
+    throw new Error(
+      `Unable to load delivery tracking (${response.status}).`,
+    );
   }
 
   return response.json() as Promise<DeliveryTrackingResponse>;

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 import {
   ActivityIndicator,
@@ -39,16 +39,18 @@ export default function App() {
 
   // Customer authentication for development testing.
   const [accessTokenInput, setAccessTokenInput] = useState('');
+  const [refreshTokenInput, setRefreshTokenInput] = useState('');
   const [savingToken, setSavingToken] = useState(false);
   const [tokenSaved, setTokenSaved] = useState(false);
 
   async function saveCustomerToken() {
-    const token = accessTokenInput.trim();
+    const accessToken = accessTokenInput.trim();
+    const refreshToken = refreshTokenInput.trim();
 
-    if (!token) {
+    if (!accessToken || !refreshToken) {
       Alert.alert(
-        'Missing token',
-        'Enter your customer access token first.',
+        'Missing tokens',
+        'Enter both your customer access token and refresh token.',
       );
       return;
     }
@@ -56,14 +58,29 @@ export default function App() {
     setSavingToken(true);
 
     try {
-      await AsyncStorage.setItem('bhooko.accessToken', token);
+      await SecureStore.setItemAsync(
+        'bhooko.accessToken',
+        accessToken,
+      );
+
+      await SecureStore.setItemAsync(
+        'bhooko.refreshToken',
+        refreshToken,
+      );
+
+      // Keep compatibility with the current Socket.IO implementation.
+      await AsyncStorage.setItem(
+        'bhooko.accessToken',
+        accessToken,
+      );
 
       setAccessTokenInput('');
+      setRefreshTokenInput('');
       setTokenSaved(true);
 
       Alert.alert(
         'Customer session saved',
-        'Your access token has been saved on this device.',
+        'Access and refresh tokens have been saved on this device.',
       );
     } catch (error) {
       const message =
@@ -79,12 +96,19 @@ export default function App() {
 
   async function clearCustomerToken() {
     try {
-      await AsyncStorage.removeItem('bhooko.accessToken');
+      await Promise.all([
+        SecureStore.deleteItemAsync('bhooko.accessToken'),
+        SecureStore.deleteItemAsync('bhooko.refreshToken'),
+        AsyncStorage.removeItem('bhooko.accessToken'),
+      ]);
+
       setTokenSaved(false);
+      setAccessTokenInput('');
+      setRefreshTokenInput('');
 
       Alert.alert(
         'Session cleared',
-        'The saved customer access token has been removed.',
+        'The saved customer session has been removed.',
       );
     } catch (error) {
       const message =
@@ -112,7 +136,9 @@ export default function App() {
       let status = existing.status;
 
       if (status !== 'granted') {
-        const requested = await Notifications.requestPermissionsAsync();
+        const requested =
+          await Notifications.requestPermissionsAsync();
+
         status = requested.status;
       }
 
@@ -143,9 +169,10 @@ export default function App() {
         throw new Error('Expo EAS project ID is missing.');
       }
 
-      const tokenResponse = await Notifications.getExpoPushTokenAsync({
-        projectId,
-      });
+      const tokenResponse =
+        await Notifications.getExpoPushTokenAsync({
+          projectId,
+        });
 
       setPushToken(tokenResponse.data);
     } catch (error) {
@@ -182,7 +209,11 @@ export default function App() {
     try {
       const Clipboard = await import('expo-clipboard');
       await Clipboard.setStringAsync(pushToken);
-      Alert.alert('Copied', 'Expo Push Token clipboard mein copy ho gaya.');
+
+      Alert.alert(
+        'Copied',
+        'Expo Push Token clipboard mein copy ho gaya.',
+      );
     } catch {
       Alert.alert('Token', pushToken);
     }
@@ -232,7 +263,9 @@ export default function App() {
 
       <Text style={styles.logo}>BHOOKO</Text>
 
-      <Text style={styles.heading}>Development Test Panel</Text>
+      <Text style={styles.heading}>
+        Development Test Panel
+      </Text>
 
       <Text style={styles.description}>
         Push notifications aur delivery tracking ko test karne ke liye
@@ -262,6 +295,23 @@ export default function App() {
           style={[styles.deliveryInput, styles.tokenInput]}
         />
 
+        <Text style={styles.label}>
+          Customer Refresh Token
+        </Text>
+
+        <TextInput
+          value={refreshTokenInput}
+          onChangeText={setRefreshTokenInput}
+          placeholder="Paste customer refresh token"
+          placeholderTextColor="#9A8D85"
+          autoCapitalize="none"
+          autoCorrect={false}
+          multiline
+          textAlignVertical="top"
+          secureTextEntry
+          style={[styles.deliveryInput, styles.tokenInput]}
+        />
+
         <TouchableOpacity
           style={[
             styles.primaryButton,
@@ -282,7 +332,7 @@ export default function App() {
         {tokenSaved ? (
           <View style={styles.sessionStatus}>
             <Text style={styles.sessionStatusText}>
-              Customer token saved on this device.
+              Customer session saved on this device.
             </Text>
 
             <TouchableOpacity
@@ -296,8 +346,8 @@ export default function App() {
           </View>
         ) : (
           <Text style={styles.helperText}>
-            Enter a valid customer access token. The token is saved locally
-            and is not displayed after saving.
+            Enter both valid customer tokens. They are saved locally
+            and are not displayed after saving.
           </Text>
         )}
       </View>
