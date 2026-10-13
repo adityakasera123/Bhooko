@@ -26,3 +26,6 @@ coverage/
 
 # local data
 *.local
+
+# Local Firebase configuration
+apps/customer-mobile/google-services.json
