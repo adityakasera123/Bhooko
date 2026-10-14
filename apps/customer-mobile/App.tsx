@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -124,14 +123,6 @@ export default function App() {
     setLoading(true);
 
     try {
-      if (!Device.isDevice) {
-        Alert.alert(
-          'Physical device required',
-          'Push notification testing ke liye physical Android phone use karo.',
-        );
-        return;
-      }
-
       const existing = await Notifications.getPermissionsAsync();
       let status = existing.status;
 
