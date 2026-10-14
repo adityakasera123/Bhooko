@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "BHOOKO Delivery",
+    "slug": "bhooko-delivery",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.bhooko.delivery",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.bhooko.delivery",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "BHOOKO uses your location to update customers about their active delivery."
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BHOOKO needs your location during an active delivery."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

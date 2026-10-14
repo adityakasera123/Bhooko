@@ -29,3 +29,17 @@ coverage/
 
 # Local Firebase configuration
 apps/customer-mobile/google-services.json
+
+# Android / Gradle generated files
+.gradle/
+**/.gradle/
+**/android/app/build/
+**/android/build/
+**/android/app/.cxx/
+
+# Android signing keys
+*.keystore
+*.jks
+
+# Expo local state
+**/.expo/

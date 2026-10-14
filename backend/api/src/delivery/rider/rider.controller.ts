@@ -77,9 +77,10 @@ export class RiderController {
     );
   }
 
+
 @Get('me/current-delivery')
 getCurrentDelivery(@Req() req: { user: { id: string } }) {
-  return this.riderService.getCurrentDelivery(req.user.id);
+  return this.riderService.getCurrentDeliveryByUserId(req.user.id);
 }
 
 @Get('me/delivery-history')

@@ -86,7 +86,7 @@ export async function connectToDelivery(
       }
 
       // Try refreshing an expired access token only once.
-      if (!refreshAttempted && socket.active) {
+      if (!refreshAttempted) {
         refreshAttempted = true;
 
         const refreshedToken = await refreshAccessToken();

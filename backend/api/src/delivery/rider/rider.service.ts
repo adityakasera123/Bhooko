@@ -229,6 +229,13 @@ export class RiderService {
     });
   }
 
+
+async getCurrentDeliveryByUserId(userId: string) {
+  const rider = await this.getRiderByUserId(userId);
+
+  return this.getCurrentDelivery(rider.id);
+}
+
     async getCurrentDelivery(riderId: string) {
     await this.getRiderById(riderId);
 
