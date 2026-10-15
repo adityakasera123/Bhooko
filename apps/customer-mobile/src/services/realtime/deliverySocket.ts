@@ -7,6 +7,7 @@ import {
 } from '../auth/authService';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const CONNECTION_TIMEOUT_MS = 10_000;
 
 export interface TrackingCoordinate {
   latitude: number;
@@ -26,13 +27,13 @@ export interface DeliveryLocationEvent {
   };
 }
 
-interface JoinDeliveryResponse {
-  event: 'joinDelivery:success' | 'joinDelivery:error';
-  data: {
-    deliveryId?: string;
-    room?: string;
-    message?: string;
-  };
+interface JoinDeliverySuccess {
+  deliveryId: string;
+  room: string;
+}
+
+interface JoinDeliveryError {
+  message?: string;
 }
 
 export async function connectToDelivery(
@@ -52,7 +53,7 @@ export async function connectToDelivery(
     throw new Error('Please sign in before tracking your delivery.');
   }
 
-  const socket = io(
+  const socket: Socket = io(
     `${API_BASE_URL.replace(/\/$/, '')}/delivery`,
     {
       auth: { token: accessToken },
@@ -63,86 +64,123 @@ export async function connectToDelivery(
   );
 
   let initialJoinCompleted = false;
+  let refreshInProgress = false;
   let refreshAttempted = false;
+  let settled = false;
 
   return new Promise<Socket>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      if (!initialJoinCompleted) {
-        socket.disconnect();
-        reject(
-          new Error('Timed out connecting to delivery tracking.'),
-        );
-      }
-    }, 10_000);
+    let timeout: ReturnType<typeof setTimeout>;
 
-    const cleanupInitialListeners = () => {
+    const cleanupTimeout = () => {
       clearTimeout(timeout);
-      socket.off('connect_error', onInitialConnectionError);
     };
 
-    const onInitialConnectionError = async (error: Error) => {
-      if (initialJoinCompleted) {
+    const failInitialConnection = (message: string) => {
+      if (settled || initialJoinCompleted) {
         return;
       }
 
-      // Try refreshing an expired access token only once.
-      if (!refreshAttempted) {
-        refreshAttempted = true;
-
-        const refreshedToken = await refreshAccessToken();
-
-        if (refreshedToken) {
-          accessToken = refreshedToken;
-          socket.auth = { token: refreshedToken };
-
-          // Retry the connection using the refreshed token.
-          socket.connect();
-          return;
-        }
-      }
-
-      cleanupInitialListeners();
+      settled = true;
+      cleanupTimeout();
       socket.disconnect();
 
-      reject(
-        new Error(error.message || 'Socket connection failed.'),
-      );
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
+      socket.off('joinDelivery:success', handleJoinSuccess);
+      socket.off('joinDelivery:error', handleJoinError);
+
+      reject(new Error(message));
     };
 
-    const onJoinSuccess = (data: {
-      deliveryId: string;
-      room: string;
-    }) => {
+    const handleConnect = () => {
+      // A connection succeeded. Allow a fresh refresh attempt if a
+      // later reconnection fails because the access token has expired.
+      refreshAttempted = false;
+
+      // The backend requires room authorization after every connection.
+      socket.emit('joinDelivery', { deliveryId });
+    };
+
+    const handleConnectError = async (error: Error) => {
+      if (refreshInProgress || refreshAttempted) {
+        if (!initialJoinCompleted) {
+          failInitialConnection(
+            error.message || 'Socket connection failed.',
+          );
+        }
+
+        // After the first successful join, Socket.IO can continue
+        // reconnecting. A new connection can trigger another refresh.
+        return;
+      }
+
+      refreshAttempted = true;
+      refreshInProgress = true;
+
+      try {
+        const refreshedToken = await refreshAccessToken();
+
+        if (!refreshedToken) {
+          if (!initialJoinCompleted) {
+            failInitialConnection(
+              'Your session has expired. Please sign in again.',
+            );
+          }
+
+          return;
+        }
+
+        accessToken = refreshedToken;
+        socket.auth = { token: accessToken };
+
+        // Retry using the refreshed access token.
+        socket.connect();
+      } catch {
+        if (!initialJoinCompleted) {
+          failInitialConnection(
+            'Unable to refresh your session. Please sign in again.',
+          );
+        }
+      } finally {
+        refreshInProgress = false;
+      }
+    };
+
+    const handleJoinSuccess = (data: JoinDeliverySuccess) => {
+      if (data?.deliveryId !== deliveryId) {
+        return;
+      }
+
       if (!initialJoinCompleted) {
         initialJoinCompleted = true;
-        cleanupInitialListeners();
+        settled = true;
+        cleanupTimeout();
         resolve(socket);
       }
     };
 
-    const onJoinError = async (data: { message?: string }) => {
-      if (initialJoinCompleted) {
-        return;
+    const handleJoinError = (data: JoinDeliveryError) => {
+      const message =
+        data?.message ?? 'Unable to join delivery tracking.';
+
+      if (!initialJoinCompleted) {
+        failInitialConnection(message);
       }
 
-      cleanupInitialListeners();
-      socket.disconnect();
-
-      reject(
-        new Error(
-          data?.message ?? 'Unable to join delivery tracking.',
-        ),
-      );
+      // Do not silently claim that the room was joined successfully.
+      // Consumers can listen for this event if a later rejoin fails.
     };
 
-    socket.on('connect_error', onInitialConnectionError);
-    socket.on('joinDelivery:success', onJoinSuccess);
-    socket.on('joinDelivery:error', onJoinError);
+    timeout = setTimeout(() => {
+      failInitialConnection(
+        'Timed out connecting to delivery tracking.',
+      );
+    }, CONNECTION_TIMEOUT_MS);
 
-    // Rejoin the delivery room on every connection/reconnection.
-    socket.on('connect', () => {
-      socket.emit('joinDelivery', { deliveryId });
-    });
+    socket.on('connect', handleConnect);
+    socket.on('connect_error', handleConnectError);
+    socket.on('joinDelivery:success', handleJoinSuccess);
+    socket.on('joinDelivery:error', handleJoinError);
 
     socket.connect();
   });

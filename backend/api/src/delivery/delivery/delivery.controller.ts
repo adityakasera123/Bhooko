@@ -44,4 +44,16 @@ export class DeliveryController {
       req.user.userId,
     );
   }
+
+  @Get(':deliveryId/route')
+@UseGuards(JwtAuthGuard)
+async getCustomerRoute(
+  @Param('deliveryId') deliveryId: string,
+  @Req() req: any,
+) {
+  return this.deliveryService.getDeliveryRoute(
+    deliveryId,
+    req.user.userId,
+  );
+}
 }

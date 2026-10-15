@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -7,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { Socket } from 'socket.io-client';
 
 import TrackingMap, {
   type TrackingCoordinate,
@@ -19,16 +21,40 @@ import {
   connectToDelivery,
   type DeliveryLocationEvent,
 } from '../../services/realtime/deliverySocket';
-import type { Socket } from 'socket.io-client';
 
 interface TrackingScreenProps {
   deliveryId: string;
 }
 
+interface DeliveryStatusEvent {
+  deliveryId: string;
+  event: 'delivery:statusChanged';
+  status: string;
+  timestamp: string;
+  data?: Record<string, unknown>;
+}
+
+const LOCATION_STALE_AFTER_MS = 60_000;
+const TRACKING_POLL_INTERVAL_MS = 30_000;
+
+function isLocationStale(receivedAt: string): boolean {
+  const receivedAtMs = Date.parse(receivedAt);
+
+  if (!Number.isFinite(receivedAtMs)) {
+    return true;
+  }
+
+  const ageMs = Date.now() - receivedAtMs;
+
+  // Reject future timestamps and locations older than 60 seconds.
+  return ageMs < 0 || ageMs > LOCATION_STALE_AFTER_MS;
+}
+
 function formatStatus(status: string): string {
-  return status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) =>
-    char.toUpperCase(),
-  );
+  return status
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export default function TrackingScreen({
@@ -63,6 +89,7 @@ export default function TrackingScreen({
               : 'Unable to load delivery tracking.',
           );
         }
+
         return null;
       } finally {
         if (active) {
@@ -87,42 +114,106 @@ export default function TrackingScreen({
         }
 
         socket = connectedSocket;
-        setRealtimeConnected(true);
 
-        socket.on(
-          'delivery:locationUpdated',
-          (event: DeliveryLocationEvent) => {
-            if (!active || event.deliveryId !== deliveryId) {
-              return;
+        const handleLocationUpdate = (
+          event: DeliveryLocationEvent,
+        ) => {
+          if (!active || event.deliveryId !== deliveryId) {
+            return;
+          }
+
+          const location = event.data?.location;
+
+          if (
+            !location ||
+            !Number.isFinite(location.latitude) ||
+            !Number.isFinite(location.longitude) ||
+            location.latitude < -90 ||
+            location.latitude > 90 ||
+            location.longitude < -180 ||
+            location.longitude > 180
+          ) {
+            return;
+          }
+
+          setTracking((current) => {
+            if (!current) {
+              return current;
             }
 
-            setTracking((current) => {
-              if (!current) {
-                return current;
-              }
+            // Do not replace a newer location with an older event.
+            const currentRecordedAt = current.riderLocation
+              ? Date.parse(current.riderLocation.recordedAt)
+              : Number.NEGATIVE_INFINITY;
+            const incomingRecordedAt = Date.parse(location.recordedAt);
 
-              return {
-                ...current,
-                riderLocation: {
-                  ...event.data.location,
-                  isStale: false,
-                },
-              };
-            });
-          },
-        );
+            if (
+              !Number.isFinite(incomingRecordedAt) ||
+              incomingRecordedAt < currentRecordedAt
+            ) {
+              return current;
+            }
 
-        socket.on('disconnect', () => {
+            return {
+              ...current,
+              riderLocation: {
+                ...location,
+                isStale: isLocationStale(location.receivedAt),
+              },
+            };
+          });
+        };
+
+        const handleStatusUpdate = (
+          event: DeliveryStatusEvent,
+        ) => {
+          if (
+            !active ||
+            event.deliveryId !== deliveryId ||
+            typeof event.status !== 'string' ||
+            !event.status.trim()
+          ) {
+            return;
+          }
+
+          setTracking((current) => {
+            if (!current) {
+              return current;
+            }
+
+            return {
+              ...current,
+              status: event.status,
+            };
+          });
+        };
+
+        const handleDisconnect = () => {
           if (active) {
             setRealtimeConnected(false);
           }
-        });
+        };
 
-        socket.on('connect', () => {
+        const handleConnect = () => {
           if (active) {
             setRealtimeConnected(true);
+            // The socket service is responsible for rejoining
+            // the delivery room after reconnection.
           }
-        });
+        };
+
+        socket.on(
+          'delivery:locationUpdated',
+          handleLocationUpdate,
+        );
+        socket.on(
+          'delivery:statusChanged',
+          handleStatusUpdate,
+        );
+        socket.on('disconnect', handleDisconnect);
+        socket.on('connect', handleConnect);
+
+        setRealtimeConnected(socket.connected);
       } catch (cause) {
         if (active) {
           setRealtimeConnected(false);
@@ -137,10 +228,9 @@ export default function TrackingScreen({
 
     void startTracking();
 
-    // Refresh status and recover the latest location periodically.
     pollingTimer = setInterval(() => {
       void loadTracking();
-    }, 30_000);
+    }, TRACKING_POLL_INTERVAL_MS);
 
     return () => {
       active = false;
@@ -150,16 +240,24 @@ export default function TrackingScreen({
       }
 
       socket?.removeAllListeners('delivery:locationUpdated');
+      socket?.removeAllListeners('delivery:statusChanged');
+      socket?.removeAllListeners('disconnect');
+      socket?.removeAllListeners('connect');
       socket?.disconnect();
     };
   }, [deliveryId]);
 
   const address = tracking?.deliveryAddress;
+
   const hasDestination =
     typeof address?.latitude === 'number' &&
     Number.isFinite(address.latitude) &&
+    address.latitude >= -90 &&
+    address.latitude <= 90 &&
     typeof address?.longitude === 'number' &&
-    Number.isFinite(address.longitude);
+    Number.isFinite(address.longitude) &&
+    address.longitude >= -180 &&
+    address.longitude <= 180;
 
   const destination: TrackingCoordinate | null = hasDestination
     ? {
@@ -182,7 +280,9 @@ export default function TrackingScreen({
         {loading ? (
           <View style={styles.messageCard}>
             <ActivityIndicator color="#F15A24" size="large" />
-            <Text style={styles.messageText}>Loading delivery details…</Text>
+            <Text style={styles.messageText}>
+              Loading delivery details…
+            </Text>
           </View>
         ) : null}
 
@@ -223,6 +323,7 @@ export default function TrackingScreen({
                 realtimeConnected && styles.connectedDot,
               ]}
             />
+
             <View style={styles.statusTextContainer}>
               <Text style={styles.statusTitle}>Live tracking</Text>
               <Text style={styles.statusDescription}>
@@ -231,6 +332,7 @@ export default function TrackingScreen({
                   : 'Live connection not confirmed'}
               </Text>
             </View>
+
             <View style={styles.statusBadge}>
               <Text style={styles.statusBadgeText}>
                 {tracking ? formatStatus(tracking.status) : 'Pending'}
@@ -274,9 +376,7 @@ export default function TrackingScreen({
           </View>
         </View>
 
-        <Text style={styles.note}>
-          Delivery ID: {deliveryId}
-        </Text>
+        <Text style={styles.note}>Delivery ID: {deliveryId}</Text>
       </ScrollView>
     </SafeAreaView>
   );

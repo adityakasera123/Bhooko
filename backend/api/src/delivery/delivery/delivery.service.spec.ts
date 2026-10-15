@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
 import { DeliveryService } from './delivery.service';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
+import { ConfigService } from '@nestjs/config';
 
 type MockFn = jest.MockedFunction<any>;
 
@@ -66,6 +67,21 @@ describe('DeliveryService', () => {
     emitToDelivery: jest.fn(),
   };
 
+
+
+const configServiceMock = {
+  get: jest.fn<(key: string) => string | undefined>(
+    (key: string) => {
+      if (key === 'GOOGLE_ROUTES_API_KEY') {
+        return undefined;
+      }
+
+      return undefined;
+    },
+  ),
+};
+
+
   const delivery = {
     id: deliveryId,
     orderId,
@@ -89,10 +105,14 @@ describe('DeliveryService', () => {
       async (callback: any) => callback(txMock),
     );
 
-    service = new DeliveryService(
-      prismaMock as unknown as PrismaService,
-      deliveryRealtimeMock as unknown as DeliveryRealtimeService,
-    );
+
+
+service = new DeliveryService(
+  prismaMock as unknown as PrismaService,
+  deliveryRealtimeMock as unknown as DeliveryRealtimeService,
+  configServiceMock as unknown as ConfigService,
+);
+
   });
 
   describe('createDelivery', () => {
@@ -791,4 +811,145 @@ describe('DeliveryService', () => {
     });
 
   });
+
+
+describe('getDeliveryRoute', () => {
+  const freshDelivery = {
+    id: deliveryId,
+    riderLatitude: 28.5355,
+    riderLongitude: 77.391,
+    riderLocationReceivedAt: new Date(),
+    order: {
+      customerId,
+      deliveryLatitude: 28.4595,
+      deliveryLongitude: 77.0266,
+    },
+  };
+
+  const mockRoutesResponse = {
+    routes: [
+      {
+        distanceMeters: 12500,
+        duration: '1200s',
+        polyline: {
+          encodedPolyline: 'test_encoded_polyline',
+        },
+      },
+    ],
+  };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('should reject when delivery does not exist', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.getDeliveryRoute(deliveryId, customerId),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('should reject access by another customer', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue({
+      ...freshDelivery,
+      order: {
+        ...freshDelivery.order,
+        customerId: 'another-customer',
+      },
+    });
+
+    await expect(
+      service.getDeliveryRoute(deliveryId, customerId),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('should return unavailable when rider coordinates are missing', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue({
+      ...freshDelivery,
+      riderLatitude: null,
+    });
+
+    await expect(
+      service.getDeliveryRoute(deliveryId, customerId),
+    ).resolves.toMatchObject({
+      available: false,
+      reason: 'LOCATION_UNAVAILABLE',
+      route: null,
+    });
+  });
+
+  it('should return unavailable when rider location is stale', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue({
+      ...freshDelivery,
+      riderLocationReceivedAt: new Date(Date.now() - 120_000),
+    });
+
+    await expect(
+      service.getDeliveryRoute(deliveryId, customerId),
+    ).resolves.toMatchObject({
+      available: false,
+      reason: 'RIDER_LOCATION_STALE',
+      route: null,
+    });
+  });
+
+  it('should return unavailable when the Routes API key is missing', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue(freshDelivery);
+    configServiceMock.get.mockReturnValue(undefined);
+
+    await expect(
+      service.getDeliveryRoute(deliveryId, customerId),
+    ).resolves.toMatchObject({
+      available: false,
+      reason: 'ROUTES_API_NOT_CONFIGURED',
+      route: null,
+    });
+  });
+
+  it('should return road distance, duration and polyline on success', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue(freshDelivery);
+    configServiceMock.get.mockReturnValue('test-api-key');
+
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(mockRoutesResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const result = await service.getDeliveryRoute(
+      deliveryId,
+      customerId,
+    );
+
+    expect(result.available).toBe(true);
+    expect(result.route).toMatchObject({
+      distanceMeters: 12500,
+      distanceKm: 12.5,
+      durationSeconds: 1200,
+      durationMinutes: 20,
+      encodedPolyline: 'test_encoded_polyline',
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('should gracefully handle a Routes API error', async () => {
+    prismaMock.delivery.findUnique.mockResolvedValue(freshDelivery);
+    configServiceMock.get.mockReturnValue('test-api-key');
+
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Provider error', { status: 500 }),
+    );
+
+    await expect(
+      service.getDeliveryRoute(deliveryId, customerId),
+    ).resolves.toMatchObject({
+      available: false,
+      reason: 'ROUTE_PROVIDER_UNAVAILABLE',
+      route: null,
+    });
+  });
+});
+
 });

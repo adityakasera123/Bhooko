@@ -4,19 +4,23 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+
 import { DeliveryStatus, DeliveryEventType } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeliveryRealtimeService } from '../gateway/delivery-realtime.service';
 import { UpdateDeliveryLocationDto } from './dto/update-delivery-location.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class DeliveryService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly deliveryRealtime: DeliveryRealtimeService,
-  ) {}
+ constructor(
+  private readonly prisma: PrismaService,
+  private readonly deliveryRealtime: DeliveryRealtimeService,
+  private readonly configService: ConfigService,
+) {}
 
   async createDelivery(orderId: string) {
     const order = await this.prisma.order.findUnique({
@@ -294,4 +298,164 @@ export class DeliveryService {
     },
   };
 }
+
+
+  async getDeliveryRoute(deliveryId: string, customerId: string) {
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      select: {
+        id: true,
+        riderLatitude: true,
+        riderLongitude: true,
+        riderLocationReceivedAt: true,
+        order: {
+          select: {
+            customerId: true,
+            deliveryLatitude: true,
+            deliveryLongitude: true,
+          },
+        },
+      },
+    });
+
+    if (!delivery) {
+      throw new NotFoundException('Delivery not found');
+    }
+
+    if (delivery.order.customerId !== customerId) {
+      throw new ForbiddenException(
+        'You are not authorized to access this delivery',
+      );
+    }
+
+    const unavailable = (reason: string) => ({
+      available: false as const,
+      reason,
+      route: null,
+    });
+
+    const originLat = delivery.riderLatitude;
+    const originLng = delivery.riderLongitude;
+    const destinationLat = delivery.order.deliveryLatitude;
+    const destinationLng = delivery.order.deliveryLongitude;
+
+    if (
+      originLat == null ||
+      originLng == null ||
+      destinationLat == null ||
+      destinationLng == null
+    ) {
+      return unavailable('LOCATION_UNAVAILABLE');
+    }
+
+    const receivedAt = delivery.riderLocationReceivedAt;
+
+    if (
+      !receivedAt ||
+      Date.now() - receivedAt.getTime() > 60_000 ||
+      receivedAt.getTime() > Date.now() + 5_000
+    ) {
+      return unavailable('RIDER_LOCATION_STALE');
+    }
+
+    const apiKey = this.configService.get<string>(
+      'GOOGLE_ROUTES_API_KEY',
+    );
+
+    if (!apiKey) {
+      return unavailable('ROUTES_API_NOT_CONFIGURED');
+    }
+
+    try {
+      const response = await fetch(
+        'https://routes.googleapis.com/directions/v2:computeRoutes',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask':
+              'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
+          },
+          body: JSON.stringify({
+            origin: {
+              location: {
+                latLng: {
+                  latitude: originLat,
+                  longitude: originLng,
+                },
+              },
+            },
+            destination: {
+              location: {
+                latLng: {
+                  latitude: destinationLat,
+                  longitude: destinationLng,
+                },
+              },
+            },
+            travelMode: 'DRIVE',
+            routingPreference: 'TRAFFIC_AWARE',
+            computeAlternativeRoutes: false,
+            languageCode: 'en',
+            units: 'METRIC',
+          }),
+          signal: AbortSignal.timeout(8_000),
+        },
+      );
+
+      if (!response.ok) {
+        // Do not expose Google's response or API key to the client.
+        return unavailable('ROUTE_PROVIDER_UNAVAILABLE');
+      }
+
+      const data = (await response.json()) as {
+        routes?: Array<{
+          distanceMeters?: number;
+          duration?: string;
+          polyline?: {
+            encodedPolyline?: string;
+          };
+        }>;
+      };
+
+      const route = data.routes?.[0];
+
+      if (
+        !route ||
+        typeof route.distanceMeters !== 'number' ||
+        !route.duration ||
+        !route.polyline?.encodedPolyline
+      ) {
+        return unavailable('ROUTE_NOT_FOUND');
+      }
+
+      const durationSeconds = Number.parseFloat(route.duration);
+
+      if (
+        !Number.isFinite(durationSeconds) ||
+        durationSeconds < 0
+      ) {
+        return unavailable('INVALID_ROUTE_RESPONSE');
+      }
+
+      return {
+        available: true as const,
+        reason: null,
+        route: {
+          distanceMeters: route.distanceMeters,
+          distanceKm: Number(
+            (route.distanceMeters / 1000).toFixed(2),
+          ),
+          durationSeconds,
+          durationMinutes: Math.ceil(durationSeconds / 60),
+          encodedPolyline: route.polyline.encodedPolyline,
+          calculatedAt: new Date().toISOString(),
+        },
+      };
+    } catch {
+      return unavailable('ROUTE_PROVIDER_UNAVAILABLE');
+    }
+  }
+
 }
