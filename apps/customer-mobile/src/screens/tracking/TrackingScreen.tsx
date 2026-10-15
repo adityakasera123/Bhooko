@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +13,9 @@ import TrackingMap, {
   type TrackingCoordinate,
 } from '../../components/maps/TrackingMap';
 import {
+  getDeliveryRoute,
   getDeliveryTracking,
+  type DeliveryRouteResponse,
   type DeliveryTrackingResponse,
 } from '../../services/api/deliveryApi';
 import {
@@ -36,6 +37,7 @@ interface DeliveryStatusEvent {
 
 const LOCATION_STALE_AFTER_MS = 60_000;
 const TRACKING_POLL_INTERVAL_MS = 30_000;
+const ROUTE_REFRESH_INTERVAL_MS = 60_000;
 
 function isLocationStale(receivedAt: string): boolean {
   const receivedAtMs = Date.parse(receivedAt);
@@ -46,7 +48,6 @@ function isLocationStale(receivedAt: string): boolean {
 
   const ageMs = Date.now() - receivedAtMs;
 
-  // Reject future timestamps and locations older than 60 seconds.
   return ageMs < 0 || ageMs > LOCATION_STALE_AFTER_MS;
 }
 
@@ -57,21 +58,40 @@ function formatStatus(status: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatRouteUnavailableReason(reason: string | null): string {
+  switch (reason) {
+    case 'LOCATION_UNAVAILABLE':
+      return 'Waiting for the rider’s GPS location.';
+    case 'RIDER_LOCATION_STALE':
+      return 'The rider’s location is outdated. Waiting for a fresh update.';
+    case 'ROUTES_API_NOT_CONFIGURED':
+      return 'Route directions are not configured on the server.';
+    default:
+      return 'Road directions are temporarily unavailable.';
+  }
+}
+
 export default function TrackingScreen({
   deliveryId,
 }: TrackingScreenProps) {
   const [tracking, setTracking] =
     useState<DeliveryTrackingResponse | null>(null);
+  const [route, setRoute] =
+    useState<DeliveryRouteResponse['route']>(null);
+  const [routeMessage, setRouteMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   useEffect(() => {
     let active = true;
     let socket: Socket | null = null;
     let pollingTimer: ReturnType<typeof setInterval> | undefined;
+    let routeTimer: ReturnType<typeof setInterval> | undefined;
+    let routeRequestInProgress = false;
 
-    async function loadTracking() {
+    async function loadTracking(): Promise<DeliveryTrackingResponse | null> {
       try {
         const result = await getDeliveryTracking(deliveryId);
 
@@ -98,12 +118,60 @@ export default function TrackingScreen({
       }
     }
 
+    async function loadRoute() {
+      if (!active || routeRequestInProgress) {
+        return;
+      }
+
+      routeRequestInProgress = true;
+
+      if (active) {
+        setRouteLoading(true);
+      }
+
+      try {
+        const result = await getDeliveryRoute(deliveryId);
+
+        if (!active) {
+          return;
+        }
+
+        if (result.available && result.route) {
+          setRoute(result.route);
+          setRouteMessage(null);
+        } else {
+          setRoute(null);
+          setRouteMessage(
+            formatRouteUnavailableReason(result.reason),
+          );
+        }
+      } catch (cause) {
+        if (active) {
+          setRoute(null);
+          setRouteMessage(
+            cause instanceof Error
+              ? cause.message
+              : 'Unable to load road directions.',
+          );
+        }
+      } finally {
+        routeRequestInProgress = false;
+
+        if (active) {
+          setRouteLoading(false);
+        }
+      }
+    }
+
     async function startTracking() {
       const initialData = await loadTracking();
 
       if (!active || !initialData) {
         return;
       }
+
+      // Fetch the initial route after the delivery details load.
+      void loadRoute();
 
       try {
         const connectedSocket = await connectToDelivery(deliveryId);
@@ -197,8 +265,6 @@ export default function TrackingScreen({
         const handleConnect = () => {
           if (active) {
             setRealtimeConnected(true);
-            // The socket service is responsible for rejoining
-            // the delivery room after reconnection.
           }
         };
 
@@ -217,11 +283,16 @@ export default function TrackingScreen({
       } catch (cause) {
         if (active) {
           setRealtimeConnected(false);
-          setError(
-            cause instanceof Error
-              ? `Live updates unavailable: ${cause.message}`
-              : 'Live updates are unavailable.',
-          );
+          setError((current) => {
+            const message =
+              cause instanceof Error
+                ? cause.message
+                : 'Live updates are unavailable.';
+
+            return current
+              ? `${current} Live updates unavailable: ${message}`
+              : `Live updates unavailable: ${message}`;
+          });
         }
       }
     }
@@ -232,11 +303,19 @@ export default function TrackingScreen({
       void loadTracking();
     }, TRACKING_POLL_INTERVAL_MS);
 
+    routeTimer = setInterval(() => {
+      void loadRoute();
+    }, ROUTE_REFRESH_INTERVAL_MS);
+
     return () => {
       active = false;
 
       if (pollingTimer) {
         clearInterval(pollingTimer);
+      }
+
+      if (routeTimer) {
+        clearInterval(routeTimer);
       }
 
       socket?.removeAllListeners('delivery:locationUpdated');
@@ -304,6 +383,7 @@ export default function TrackingScreen({
                   }
                 : null
             }
+            encodedPolyline={route?.encodedPolyline ?? null}
           />
         ) : !loading ? (
           <View style={styles.mapPlaceholder}>
@@ -314,6 +394,54 @@ export default function TrackingScreen({
             </Text>
           </View>
         ) : null}
+
+        <View style={styles.routeCard}>
+          <View style={styles.routeHeader}>
+            <Text style={styles.routeTitle}>Road directions</Text>
+            {routeLoading ? (
+              <ActivityIndicator color="#F15A24" size="small" />
+            ) : null}
+          </View>
+
+          {route ? (
+            <View style={styles.routeMetrics}>
+              <View style={styles.routeMetric}>
+                <Text style={styles.routeMetricValue}>
+                  {route.distanceKm < 10
+                    ? route.distanceKm.toFixed(1)
+                    : Math.round(route.distanceKm)}{' '}
+                  km
+                </Text>
+                <Text style={styles.routeMetricLabel}>
+                  Road distance
+                </Text>
+              </View>
+
+              <View style={styles.routeMetricDivider} />
+
+              <View style={styles.routeMetric}>
+                <Text style={styles.routeMetricValue}>
+                  {route.durationMinutes < 1
+                    ? '<1'
+                    : Math.round(route.durationMinutes)}{' '}
+                  min
+                </Text>
+                <Text style={styles.routeMetricLabel}>
+                  Estimated travel
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.routeMessage}>
+              {routeMessage ??
+                'Road directions will appear when the rider’s location is available.'}
+            </Text>
+          )}
+
+          <Text style={styles.routeFootnote}>
+            Estimated travel time may change with traffic and rider location.
+          </Text>
+        </View>
 
         <View style={styles.statusCard}>
           <View style={styles.statusRow}>
@@ -457,6 +585,57 @@ const styles = StyleSheet.create({
   errorText: {
     color: '#7C3528',
     lineHeight: 20,
+  },
+  routeCard: {
+    padding: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F0E3DA',
+    gap: 14,
+  },
+  routeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  routeTitle: {
+    color: '#211B18',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  routeMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  routeMetric: {
+    flex: 1,
+    gap: 5,
+  },
+  routeMetricValue: {
+    color: '#211B18',
+    fontSize: 23,
+    fontWeight: '800',
+  },
+  routeMetricLabel: {
+    color: '#70645E',
+    fontSize: 12,
+  },
+  routeMetricDivider: {
+    width: 1,
+    height: 42,
+    backgroundColor: '#F0E3DA',
+    marginHorizontal: 16,
+  },
+  routeMessage: {
+    color: '#70645E',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  routeFootnote: {
+    color: '#8A7D75',
+    fontSize: 11,
+    lineHeight: 16,
   },
   statusCard: {
     padding: 18,
