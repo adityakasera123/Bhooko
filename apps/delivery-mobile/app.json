@@ -18,14 +18,17 @@
         "NSLocationWhenInUseUsageDescription": "BHOOKO uses your location to update customers about their active delivery."
       }
     },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "BHOOKO needs your location during an active delivery."
-        }
-      ],
-      "expo-secure-store"
-    ]
+    
+"plugins": [
+  [
+    "expo-location",
+    {
+      "locationWhenInUsePermission": "BHOOKO needs your location during an active delivery."
+    }
+  ],
+  "expo-secure-store",
+  "expo-notifications"
+]
+
   }
 }
