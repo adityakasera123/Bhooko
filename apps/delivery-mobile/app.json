@@ -9,26 +9,31 @@
       "package": "com.bhooko.delivery",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "ios": {
       "bundleIdentifier": "com.bhooko.delivery",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "BHOOKO uses your location to update customers about their active delivery."
+        "NSLocationWhenInUseUsageDescription": "BHOOKO uses your location to update customers about their active delivery.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "BHOOKO shares rider location during an active delivery, including when the app is in the background."
       }
     },
-    
-"plugins": [
-  [
-    "expo-location",
-    {
-      "locationWhenInUsePermission": "BHOOKO needs your location during an active delivery."
-    }
-  ],
-  "expo-secure-store",
-  "expo-notifications"
-]
-
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BHOOKO needs your location during an active delivery.",
+          "locationAlwaysAndWhenInUsePermission": "BHOOKO needs background location to keep customers updated during an active delivery.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications"
+    ]
   }
 }

@@ -10,6 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
+import {
+  DELIVERY_ID_KEY,
+  TASK_NAME,
+} from './src/location/backgroundLocationTask';
+
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
@@ -267,21 +273,30 @@ export default function App() {
       setBusy(false);
     }
   }, [email, password, refreshDashboard]);
+const logout = useCallback(async () => {
+  try {
+    if (await Location.hasStartedLocationUpdatesAsync(TASK_NAME)) {
+      await Location.stopLocationUpdatesAsync(TASK_NAME);
+    }
+  } catch (cause) {
+    console.warn('[GPS] Unable to stop background tracking:', cause);
+  }
 
-  const logout = useCallback(async () => {
-    setToken(null);
-    setProfile(null);
-    setDelivery(null);
-    setLastLocation(null);
-    setGpsStatus('Tracking stopped');
-    setError(null);
-    setNotice(null);
+  await SecureStore.deleteItemAsync(DELIVERY_ID_KEY);
 
-    await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_KEY),
-      SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
-    ]);
-  }, []);
+  setToken(null);
+  setProfile(null);
+  setDelivery(null);
+  setLastLocation(null);
+  setGpsStatus('Tracking stopped');
+  setError(null);
+  setNotice(null);
+
+  await Promise.all([
+    SecureStore.deleteItemAsync(TOKEN_KEY),
+    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
+  ]);
+}, []);
 
   const reloadDelivery = useCallback(async () => {
     if (!token) return;
@@ -361,138 +376,100 @@ export default function App() {
     };
   }, [refreshDashboard]);
 
-  useEffect(() => {
-    if (!token || !delivery || !ACTIVE_STATUSES.has(delivery.status)) {
-      setGpsStatus(
-        delivery
-          ? `Tracking is not active for ${delivery.status}`
-          : 'Waiting for an active delivery',
-      );
+useEffect(() => {
+  let cancelled = false;
+
+  async function syncTracking() {
+    const isActive =
+      Boolean(token && delivery?.id) &&
+      ACTIVE_STATUSES.has(delivery!.status);
+
+    if (!isActive) {
+      if (await Location.hasStartedLocationUpdatesAsync(TASK_NAME)) {
+        await Location.stopLocationUpdatesAsync(TASK_NAME);
+      }
+
+      await SecureStore.deleteItemAsync(DELIVERY_ID_KEY);
+
+      if (!cancelled) {
+        setGpsStatus(
+          delivery
+            ? `Tracking is not active for ${delivery.status}`
+            : 'Waiting for an active delivery',
+        );
+      }
       return;
     }
 
-    let active = true;
-    let subscription: Location.LocationSubscription | undefined;
+    try {
+      setGpsStatus('Requesting location permissions…');
 
-    async function startGps() {
-      try {
-        setGpsStatus('Requesting location permission…');
+      const foreground =
+        await Location.requestForegroundPermissionsAsync();
 
-        const permission =
-          await Location.requestForegroundPermissionsAsync();
+      if (!foreground.granted) {
+        throw new Error('Foreground location permission is required.');
+      }
 
-        if (!permission.granted) {
-          setGpsStatus('Location permission denied');
-          setError('Allow location permission to share delivery progress.');
-          return;
-        }
+      const background =
+        await Location.requestBackgroundPermissionsAsync();
 
-        const provider = await Location.getProviderStatusAsync();
-
-        if (!provider.locationServicesEnabled) {
-          setGpsStatus('Turn on device location services');
-          return;
-        }
-
-        setError(null);
-        setGpsStatus('GPS active — waiting for first location');
-
-        subscription = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
-            distanceInterval: 0,
-          },
-          (position) => {
-            if (!active || uploading.current || !delivery || !delivery.id || !token) {
-              return;
-            }
-
-            const now = Date.now();
-
-            // Keep the existing foreground upload interval.
-            if (now - lastUploadAt.current < 4500) return;
-
-            uploading.current = true;
-            lastUploadAt.current = now;
-
-            const location = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              accuracyMeters:
-                position.coords.accuracy == null
-                  ? undefined
-                  : Math.min(
-                      10000,
-                      Math.max(0, position.coords.accuracy),
-                    ),
-              recordedAt: new Date(position.timestamp).toISOString(),
-            };
-
-            void apiRequest<{ location: { receivedAt: string } }>(
-              `/delivery/${delivery.id}/location`,
-              token,
-              {
-                method: 'POST',
-                body: JSON.stringify(location),
-              },
-            )
-              .then((result) => {
-                if (!active) return;
-
-                console.log(
-                  '[GPS UPLOAD SUCCESS]',
-                  result.location.receivedAt,
-                );
-
-                setLastLocation(
-                  `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`,
-                );
-                setGpsStatus('GPS active — location uploaded');
-                setNotice(
-                  `Last update received at ${new Date(
-                    result.location.receivedAt,
-                  ).toLocaleTimeString()}`,
-                );
-                setError(null);
-              })
-              .catch((cause: unknown) => {
-                if (!active) return;
-
-                console.error('[GPS UPLOAD FAILED]', cause);
-                setGpsStatus('GPS active — upload failed');
-                setError(
-                  cause instanceof Error
-                    ? cause.message
-                    : 'Unable to upload GPS location.',
-                );
-              })
-              .finally(() => {
-                uploading.current = false;
-              });
-          },
+      if (!background.granted) {
+        throw new Error(
+          'Allow background location permission to continue tracking when Rider is minimized.',
         );
-      } catch (cause) {
-        if (!active) return;
+      }
 
-        setGpsStatus('Unable to start GPS');
+      const provider = await Location.getProviderStatusAsync();
+
+      if (!provider.locationServicesEnabled) {
+        throw new Error('Turn on device location services.');
+      }
+
+      await SecureStore.setItemAsync(DELIVERY_ID_KEY, delivery!.id);
+
+      const alreadyStarted =
+        await Location.hasStartedLocationUpdatesAsync(TASK_NAME);
+
+      if (alreadyStarted) {
+        await Location.stopLocationUpdatesAsync(TASK_NAME);
+      }
+
+      await Location.startLocationUpdatesAsync(TASK_NAME, {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+        distanceInterval: 0,
+        pausesUpdatesAutomatically: false,
+        foregroundService: {
+          notificationTitle: 'BHOOKO Rider tracking',
+          notificationBody:
+            'Location is shared with the customer during your active delivery.',
+          killServiceOnDestroy: false,
+        },
+      });
+
+      if (!cancelled) {
+        setGpsStatus('Background GPS tracking active');
+        setError(null);
+      }
+    } catch (cause) {
+      if (!cancelled) {
+        setGpsStatus('Unable to start background GPS');
         setError(
           cause instanceof Error
             ? cause.message
-            : 'Unable to start GPS.',
+            : 'Unable to start background GPS.',
         );
       }
     }
+  }
 
-    void startGps();
+  void syncTracking();
 
-    return () => {
-      active = false;
-      subscription?.remove();
-      uploading.current = false;
-      setGpsStatus('Tracking stopped');
-    };
-  }, [token, delivery?.id, delivery?.status]);
+  return () => {
+    cancelled = true;
+  };
+}, [token, delivery?.id, delivery?.status]);
 
   useEffect(() => {
     if (!token) return;
@@ -657,7 +634,7 @@ export default function App() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Text style={styles.footer}>
-          Keep the app open during this foreground GPS test.
+          Background GPS tracking runs during an active delivery.
         </Text>
       </ScrollView>
     </SafeAreaView>
