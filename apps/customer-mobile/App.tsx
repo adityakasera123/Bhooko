@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { StatusBar } from 'expo-status-bar';
+
+import * as SplashScreen from 'expo-splash-screen';
 
 import * as Notifications from 'expo-notifications';
 
@@ -12,11 +14,17 @@ import * as SecureStore from 'expo-secure-store';
 
 
 
+
+
 import {
 
   ActivityIndicator,
 
   Alert,
+
+  Animated,
+
+  Image,
 
   Platform,
 
@@ -36,6 +44,7 @@ import {
 
 import TrackingScreen from './src/screens/tracking/TrackingScreen';
 
+
 import { refreshAccessToken } from './src/services/auth/authService';
 
 Notifications.setNotificationHandler({
@@ -54,7 +63,10 @@ Notifications.setNotificationHandler({
 
 });
 
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 export default function App() {
+
 
   const [pushToken, setPushToken] = useState('');
 
@@ -75,6 +87,30 @@ export default function App() {
   const [savingToken, setSavingToken] = useState(false);
 
   const [tokenSaved, setTokenSaved] = useState(false);
+
+  const [appReady, setAppReady] = useState(false);
+
+    const splashProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(splashProgress, {
+      toValue: 1,
+      duration: 650,
+      useNativeDriver: true,
+    }).start();
+  }, [splashProgress]);
+
+ useEffect(() => {
+    // Native splash ko turant hide kar do
+    SplashScreen.hideAsync().catch(() => {});
+
+    // 1.5 second tak aapka custom splash dikhega
+    const timer = setTimeout(() => {
+      setAppReady(true);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   async function saveCustomerToken() {
 
@@ -331,7 +367,7 @@ export default function App() {
         'Push Ready',
         'Device token registered with the configured BHOOKO backend.',
       );
-      
+
     } catch (error) {
 
       const message =
@@ -428,6 +464,7 @@ export default function App() {
 
   }
 
+
   if (trackingDeliveryId) {
 
     return (
@@ -464,23 +501,51 @@ export default function App() {
 
   }
 
-  return (
-
-    <ScrollView
-
-      contentContainerStyle={styles.container}
-
-      keyboardShouldPersistTaps="handled"
-
-    >
-
+ if (!appReady) {
+    return (
+      <View style={styles.splashContainer}>
+        <StatusBar style="dark" />
+       <Animated.Image
+  source={require('./assets/bhooko-logo.png')}
+  style={[
+    styles.splashLogo,
+    {
+      opacity: splashProgress,
+      transform: [
+        {
+          translateY: splashProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [36, 0],
+          }),
+        },
+      ],
+    },
+  ]}
+  resizeMode="contain"
+/>
+        <ActivityIndicator
+          size="large"
+          color="#F15A24"
+          style={{ marginTop: 24 }}
+        />
+      </View>
+    );
+  }
+ return (
+  <ScrollView
+    contentContainerStyle={styles.container}
+    keyboardShouldPersistTaps="handled"
+ onLayout={() => {
+  SplashScreen.hideAsync().catch(() => {});
+}}
+  >
       <StatusBar style="dark" />
 
       <Text style={styles.logo}>BHOOKO</Text>
 
       <Text style={styles.heading}>
 
-        Development Test Panel
+       BHOOKO Test Panel
 
       </Text>
 
@@ -809,6 +874,18 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+
+  splashContainer: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#FFF7F0',
+},
+
+splashLogo: {
+  width: '78%',
+  height: 120,
+},
 
   container: {
 

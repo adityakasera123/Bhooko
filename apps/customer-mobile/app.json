@@ -7,11 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+ "splash": {
+  "image": "./assets/splash-transparent.png",
+  "resizeMode": "contain",
+  "backgroundColor": "#FFF7F0"
+},
     "ios": {
       "supportsTablet": true
     },
