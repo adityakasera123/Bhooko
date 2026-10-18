@@ -6,8 +6,10 @@ const { expo } = require('./app.json');
 function loadEnvFile() {
   const envPath = path.join(__dirname, '.env');
 
+  // Local development: load .env when it exists.
+  // EAS cloud builds: environment variables can be supplied by EAS.
   if (!fs.existsSync(envPath)) {
-    throw new Error('Missing apps/customer-mobile/.env file');
+    return;
   }
 
   const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
@@ -52,6 +54,9 @@ module.exports = {
   ],
   android: {
     ...expo.android,
+    googleServicesFile:
+  process.env.GOOGLE_SERVICES_JSON ||
+  expo.android?.googleServicesFile,
     config: {
       ...expo.android?.config,
       googleMaps: {
