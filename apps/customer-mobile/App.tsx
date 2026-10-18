@@ -10,6 +10,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import * as SecureStore from 'expo-secure-store';
 
+
+
 import {
 
   ActivityIndicator,
@@ -33,6 +35,8 @@ import {
 } from 'react-native';
 
 import TrackingScreen from './src/screens/tracking/TrackingScreen';
+
+import { refreshAccessToken } from './src/services/auth/authService';
 
 Notifications.setNotificationHandler({
 
@@ -273,37 +277,49 @@ export default function App() {
         });
 
       setPushToken(tokenResponse.data);
+      // Register device with the configured BHOOKO API.
+      const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
 
-      // Register the current emulator/device token with the authenticated customer.
-      const accessToken = await SecureStore.getItemAsync(
+      if (!apiBaseUrl) {
+        throw new Error('EXPO_PUBLIC_API_URL is not configured.');
+      }
+
+      let accessToken = await SecureStore.getItemAsync(
         'bhooko.accessToken',
       );
 
       if (!accessToken) {
         throw new Error(
-          'Customer session missing. Save the customer access token first.',
+          'Please sign in before registering push notifications.',
         );
       }
 
-      // Android Studio emulator reaches the host machine through 10.0.2.2.
-      // This assumes the NestJS API is listening on port 3000.
-      const apiBaseUrl = 'http://10.0.2.2:3000';
-
-      const response = await fetch(
-        `${apiBaseUrl}/notifications/push-devices`,
-        {
+      const registerDevice = (token: string) =>
+        fetch(`${apiBaseUrl}/notifications/push-devices`, {
           method: 'POST',
           headers: {
+            Accept: 'application/json',
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             pushToken: tokenResponse.data,
             platform: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
             deviceName: 'BHOOKO Customer App',
           }),
-        },
-      );
+        });
+
+      let response = await registerDevice(accessToken);
+
+      if (response.status === 401) {
+        accessToken = await refreshAccessToken();
+
+        if (!accessToken) {
+          throw new Error('Session expired. Please sign in again.');
+        }
+
+        response = await registerDevice(accessToken);
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -313,9 +329,9 @@ export default function App() {
 
       Alert.alert(
         'Push Ready',
-        'Device token generated and registered with BHOOKO backend.',
+        'Device token registered with the configured BHOOKO backend.',
       );
-
+      
     } catch (error) {
 
       const message =
