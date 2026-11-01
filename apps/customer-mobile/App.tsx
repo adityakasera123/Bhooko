@@ -43,7 +43,7 @@ import {
 } from 'react-native';
 
 import TrackingScreen from './src/screens/tracking/TrackingScreen';
-
+import AuthScreen from './src/screens/auth/AuthScreen';
 
 import { refreshAccessToken } from './src/services/auth/authService';
 
@@ -64,6 +64,10 @@ Notifications.setNotificationHandler({
 });
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Temporary UI-first authentication preview.
+// Set false to return to the existing development test panel.
+const SHOW_AUTH_UI = true;
 
 export default function App() {
 
@@ -531,6 +535,15 @@ export default function App() {
       </View>
     );
   }
+if (SHOW_AUTH_UI) {
+  return (
+    <>
+      <StatusBar style="dark" />
+      <AuthScreen />
+    </>
+  );
+}
+
  return (
   <ScrollView
     contentContainerStyle={styles.container}

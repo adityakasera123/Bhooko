@@ -50,6 +50,51 @@ export async function clearAuthTokens(): Promise<void> {
   ]);
 }
 
+interface RegisterResponse {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+}
+
+export async function registerCustomer(
+  name: string,
+  email: string,
+  phone: string,
+  password: string,
+): Promise<RegisterResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/auth/register`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      password,
+    }),
+  });
+
+  const result = (await response.json()) as RegisterResponse & {
+    message?: string | string[];
+  };
+
+  if (!response.ok) {
+    const message = Array.isArray(result.message)
+      ? result.message.join(', ')
+      : result.message;
+
+    throw new Error(
+      message || `Registration failed (${response.status}).`,
+    );
+  }
+
+  return result;
+}
+
 export async function loginCustomer(
   email: string,
   password: string,
@@ -103,10 +148,17 @@ export async function refreshAccessToken(): Promise<string | null> {
         body: JSON.stringify({ refreshToken }),
       });
 
-      if (!response.ok) {
-        await clearAuthTokens();
-        return null;
-      }
+      if (response.status === 401) {
+  // Refresh token is invalid, expired or revoked.
+  await clearAuthTokens();
+  return null;
+}
+
+if (!response.ok) {
+  // Temporary server/API error.
+  // Preserve tokens so the user can retry later.
+  return null;
+}
 
       const tokens = (await response.json()) as AuthTokens;
 
