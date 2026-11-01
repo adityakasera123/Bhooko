@@ -49,7 +49,9 @@ import {
   registerCustomer,
   refreshAccessToken,
   logoutCustomer,
+  restoreCustomerSession,
 } from './src/services/auth/authService';
+
 
 Notifications.setNotificationHandler({
 
@@ -99,8 +101,12 @@ export default function App() {
   const [appReady, setAppReady] = useState(false);
 
   // Temporary customer authentication state.
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [customerName, setCustomerName] = useState('');
+ const [isAuthenticated, setIsAuthenticated] = useState(false);
+ const [showDevPanel, setShowDevPanel] = useState(false);
+const [customerName, setCustomerName] = useState('');
+
+const [authChecking, setAuthChecking] = useState(SHOW_AUTH_UI);
+const [authCheckError, setAuthCheckError] = useState('');
 
     const splashProgress = useRef(new Animated.Value(0)).current;
 
@@ -124,10 +130,46 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  async function restoreSession() {
+  setAuthChecking(true);
+  setAuthCheckError('');
+
+  try {
+    const customer = await restoreCustomerSession();
+
+    if (customer) {
+      setCustomerName(customer.name);
+      setIsAuthenticated(true);
+    } else {
+      setIsAuthenticated(false);
+      setCustomerName('');
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Unable to verify your saved session.';
+
+    setAuthCheckError(message);
+  } finally {
+    setAuthChecking(false);
+  }
+}
+
+  useEffect(() => {
+    if (!appReady || !SHOW_AUTH_UI) {
+      return;
+    }
+
+    void restoreSession();
+  }, [appReady]);
+
   async function handleLogin(email: string, password: string) {
     const result = await loginCustomer(email, password);
+    setAuthCheckError('');
     setCustomerName(result.user.name);
     setIsAuthenticated(true);
+    setShowDevPanel(false);
   }
 
   async function handleRegister(
@@ -573,6 +615,40 @@ export default function App() {
       </View>
     );
   }
+if (SHOW_AUTH_UI && authChecking) {
+  return (
+    <View style={styles.authCheckingContainer}>
+      <StatusBar style="dark" />
+      <ActivityIndicator size="large" color="#F15A24" />
+      <Text style={styles.authCheckingText}>Checking your session...</Text>
+    </View>
+  );
+}
+
+if (SHOW_AUTH_UI && authCheckError) {
+  return (
+    <View style={styles.authCheckingContainer}>
+      <StatusBar style="dark" />
+      <Text style={styles.logo}>BHOOKO</Text>
+      <Text style={styles.authenticatedHeading}>
+        Session verification failed
+      </Text>
+      <Text style={styles.authenticatedDescription}>
+        {authCheckError}
+      </Text>
+      <TouchableOpacity style={styles.primaryButton} onPress={restoreSession}>
+        <Text style={styles.buttonText}>Retry</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.secondaryButton}
+        onPress={() => setAuthCheckError('')}
+      >
+        <Text style={styles.secondaryButtonText}>Continue to Login</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 if (SHOW_AUTH_UI && !isAuthenticated) {
   return (
     <>
@@ -582,7 +658,7 @@ if (SHOW_AUTH_UI && !isAuthenticated) {
   );
 }
 
-if (SHOW_AUTH_UI && isAuthenticated) {
+if (SHOW_AUTH_UI && isAuthenticated && !showDevPanel) {
   return (
     <View style={styles.authenticatedContainer}>
       <StatusBar style="dark" />
@@ -596,6 +672,15 @@ if (SHOW_AUTH_UI && isAuthenticated) {
         </Text>
         <TouchableOpacity style={styles.primaryButton} onPress={handleLogout}>
           <Text style={styles.buttonText}>Logout</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => setShowDevPanel(true)}
+        >
+          <Text style={styles.secondaryButtonText}>
+            Open Development Test Panel
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -613,6 +698,17 @@ if (SHOW_AUTH_UI && isAuthenticated) {
       <StatusBar style="dark" />
 
       <Text style={styles.logo}>BHOOKO</Text>
+
+      {SHOW_AUTH_UI && isAuthenticated && (
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => setShowDevPanel(false)}
+        >
+          <Text style={styles.secondaryButtonText}>
+            ← Back to Welcome
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <Text style={styles.heading}>
 
@@ -945,6 +1041,21 @@ if (SHOW_AUTH_UI && isAuthenticated) {
 }
 
 const styles = StyleSheet.create({
+  authCheckingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: '#FFF7F0',
+  },
+
+  authCheckingText: {
+    marginTop: 16,
+    color: '#70645E',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
 
   authenticatedContainer: {
     flex: 1,

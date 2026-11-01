@@ -194,6 +194,80 @@ export async function getValidAccessToken(): Promise<string | null> {
   // because this service does not decode JWT expiry or rely on device time.
   return accessToken;
 }
+interface CustomerProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+}
+
+async function fetchCustomerProfile(
+  accessToken: string,
+): Promise<Response> {
+  return fetch(`${getApiBaseUrl()}/users/me`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+}
+
+export async function restoreCustomerSession(): Promise<CustomerProfile | null> {
+  let accessToken = await getAccessToken();
+
+  // No access token? Try restoring it using the saved refresh token.
+  if (!accessToken) {
+    accessToken = await refreshAccessToken();
+
+    if (!accessToken) {
+      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+
+      if (refreshToken) {
+        throw new Error(
+          'Unable to verify your session. Please check your internet connection and retry.',
+        );
+      }
+
+      return null;
+    }
+  }
+
+  let response = await fetchCustomerProfile(accessToken);
+
+  // Access token may have expired. Refresh and retry once.
+  if (response.status === 401) {
+    accessToken = await refreshAccessToken();
+
+    if (!accessToken) {
+      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+
+      if (refreshToken) {
+        throw new Error(
+          'Unable to refresh your session. Please try again.',
+        );
+      }
+
+      return null;
+    }
+
+    response = await fetchCustomerProfile(accessToken);
+  }
+
+  if (response.status === 401) {
+    await clearAuthTokens();
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Unable to restore customer session (${response.status}).`,
+    );
+  }
+
+  return (await response.json()) as CustomerProfile;
+}
 
 export async function logoutCustomer(): Promise<void> {
   const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
@@ -212,4 +286,9 @@ export async function logoutCustomer(): Promise<void> {
   } finally {
     await clearAuthTokens();
   }
+}
+
+export async function hasRefreshToken(): Promise<boolean> {
+  const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+  return Boolean(refreshToken);
 }

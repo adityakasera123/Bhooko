@@ -1,10 +1,4 @@
-
-import {
-  getAccessToken,
-  refreshAccessToken,
-} from '../auth/authService';
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+import { apiRequest } from './apiClient';
 
 export interface TrackingCoordinate {
   latitude: number;
@@ -42,83 +36,6 @@ export interface DeliveryTrackingResponse {
   };
 }
 
-async function requestDeliveryTracking(
-  deliveryId: string,
-  accessToken: string,
-): Promise<Response> {
-  return fetch(
-    `${API_BASE_URL!.replace(/\/$/, '')}/delivery/${encodeURIComponent(deliveryId)}`,
-    {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
-}
-
-export async function getDeliveryTracking(
-  deliveryId: string,
-): Promise<DeliveryTrackingResponse> {
-  if (!API_BASE_URL) {
-    throw new Error(
-      'EXPO_PUBLIC_API_URL is not configured for the customer app.',
-    );
-  }
-
-  let accessToken = await getAccessToken();
-
-  if (!accessToken) {
-    throw new Error('Please sign in before tracking your delivery.');
-  }
-
-  let response = await requestDeliveryTracking(
-    deliveryId,
-    accessToken,
-  );
-
-  // Refresh once after an expired or invalid access token.
-  if (response.status === 401) {
-    accessToken = await refreshAccessToken();
-
-    if (!accessToken) {
-      throw new Error(
-        'Your session has expired. Please sign in again.',
-      );
-    }
-
-    response = await requestDeliveryTracking(
-      deliveryId,
-      accessToken,
-    );
-  }
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error(
-        'Your session has expired. Please sign in again.',
-      );
-    }
-
-    if (response.status === 403 || response.status === 409) {
-      throw new Error(
-        'You are not authorized to view this delivery.',
-      );
-    }
-
-    if (response.status === 404) {
-      throw new Error('Delivery not found.');
-    }
-
-    throw new Error(
-      `Unable to load delivery tracking (${response.status}).`,
-    );
-  }
-
-  return response.json() as Promise<DeliveryTrackingResponse>;
-}
-
 export interface DeliveryRouteResponse {
   available: boolean;
   reason: string | null;
@@ -132,72 +49,78 @@ export interface DeliveryRouteResponse {
   } | null;
 }
 
-async function requestDeliveryRoute(
+function getDeliveryPath(deliveryId: string): string {
+  if (!deliveryId?.trim()) {
+    throw new Error('A valid delivery ID is required.');
+  }
+
+  return `/delivery/${encodeURIComponent(deliveryId)}`;
+}
+
+function handleDeliveryError(error: unknown, resource: 'tracking' | 'route'): never {
+  if (error instanceof Error && 'status' in error) {
+    const status = (error as Error & { status: number }).status;
+
+    if (status === 401) {
+      throw new Error('Your session has expired. Please sign in again.');
+    }
+
+    if (status === 403 || status === 409) {
+      throw new Error(
+        resource === 'tracking'
+          ? 'You are not authorized to view this delivery.'
+          : 'You are not authorized to view this delivery route.',
+      );
+    }
+
+    if (status === 404) {
+      throw new Error(
+        resource === 'tracking'
+          ? 'Delivery not found.'
+          : 'Delivery route not found.',
+      );
+    }
+
+    throw new Error(
+      resource === 'tracking'
+        ? `Unable to load delivery tracking (${status}).`
+        : `Unable to load delivery route (${status}).`,
+    );
+  }
+
+  throw error instanceof Error
+    ? error
+    : new Error(
+        resource === 'tracking'
+          ? 'Unable to load delivery tracking.'
+          : 'Unable to load delivery route.',
+      );
+}
+
+export async function getDeliveryTracking(
   deliveryId: string,
-  accessToken: string,
-): Promise<Response> {
-  return fetch(
-    `${API_BASE_URL!.replace(/\/$/, '')}/delivery/${encodeURIComponent(deliveryId)}/route`,
-    {
+): Promise<DeliveryTrackingResponse> {
+  const path = getDeliveryPath(deliveryId);
+
+  try {
+    return await apiRequest<DeliveryTrackingResponse>(path, {
       method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  );
+    });
+  } catch (error) {
+    return handleDeliveryError(error, 'tracking');
+  }
 }
 
 export async function getDeliveryRoute(
   deliveryId: string,
 ): Promise<DeliveryRouteResponse> {
-  if (!API_BASE_URL) {
-    throw new Error(
-      'EXPO_PUBLIC_API_URL is not configured for the customer app.',
-    );
+  const path = `${getDeliveryPath(deliveryId)}/route`;
+
+  try {
+    return await apiRequest<DeliveryRouteResponse>(path, {
+      method: 'GET',
+    });
+  } catch (error) {
+    return handleDeliveryError(error, 'route');
   }
-
-  let accessToken = await getAccessToken();
-
-  if (!accessToken) {
-    throw new Error('Please sign in before viewing the delivery route.');
-  }
-
-  let response = await requestDeliveryRoute(deliveryId, accessToken);
-
-  if (response.status === 401) {
-    accessToken = await refreshAccessToken();
-
-    if (!accessToken) {
-      throw new Error(
-        'Your session has expired. Please sign in again.',
-      );
-    }
-
-    response = await requestDeliveryRoute(deliveryId, accessToken);
-  }
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error(
-        'Your session has expired. Please sign in again.',
-      );
-    }
-
-    if (response.status === 403 || response.status === 409) {
-      throw new Error(
-        'You are not authorized to view this delivery route.',
-      );
-    }
-
-    if (response.status === 404) {
-      throw new Error('Delivery not found.');
-    }
-
-    throw new Error(
-      `Unable to load delivery route (${response.status}).`,
-    );
-  }
-
-  return response.json() as Promise<DeliveryRouteResponse>;
 }
