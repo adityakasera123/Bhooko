@@ -24,7 +24,6 @@ import {
 
   Animated,
 
-  Image,
 
   Platform,
 
@@ -45,7 +44,12 @@ import {
 import TrackingScreen from './src/screens/tracking/TrackingScreen';
 import AuthScreen from './src/screens/auth/AuthScreen';
 
-import { refreshAccessToken } from './src/services/auth/authService';
+import {
+  loginCustomer,
+  registerCustomer,
+  refreshAccessToken,
+  logoutCustomer,
+} from './src/services/auth/authService';
 
 Notifications.setNotificationHandler({
 
@@ -94,6 +98,10 @@ export default function App() {
 
   const [appReady, setAppReady] = useState(false);
 
+  // Temporary customer authentication state.
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+
     const splashProgress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -115,6 +123,36 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  async function handleLogin(email: string, password: string) {
+    const result = await loginCustomer(email, password);
+    setCustomerName(result.user.name);
+    setIsAuthenticated(true);
+  }
+
+  async function handleRegister(
+    name: string,
+    email: string,
+    phone: string,
+    password: string,
+  ) {
+    // Registration creates the account; login creates the session tokens.
+    await registerCustomer(name, email, phone, password);
+    await handleLogin(email, password);
+  }
+
+  async function handleLogout() {
+    try {
+      await logoutCustomer();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to log out.';
+      Alert.alert('Logout issue', message);
+    } finally {
+      setIsAuthenticated(false);
+      setCustomerName('');
+    }
+  }
 
   async function saveCustomerToken() {
 
@@ -535,12 +573,32 @@ export default function App() {
       </View>
     );
   }
-if (SHOW_AUTH_UI) {
+if (SHOW_AUTH_UI && !isAuthenticated) {
   return (
     <>
       <StatusBar style="dark" />
-      <AuthScreen />
+      <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />
     </>
+  );
+}
+
+if (SHOW_AUTH_UI && isAuthenticated) {
+  return (
+    <View style={styles.authenticatedContainer}>
+      <StatusBar style="dark" />
+      <View style={styles.authenticatedCard}>
+        <Text style={styles.logo}>BHOOKO</Text>
+        <Text style={styles.authenticatedHeading}>
+          Welcome{customerName ? `, ${customerName}` : ''}!
+        </Text>
+        <Text style={styles.authenticatedDescription}>
+          You are successfully signed in to your BHOOKO customer account.
+        </Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={handleLogout}>
+          <Text style={styles.buttonText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -887,6 +945,38 @@ if (SHOW_AUTH_UI) {
 }
 
 const styles = StyleSheet.create({
+
+  authenticatedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#FFF7F0',
+  },
+
+  authenticatedCard: {
+    padding: 24,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EDE2D9',
+  },
+
+  authenticatedHeading: {
+    marginTop: 18,
+    color: '#30251F',
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  authenticatedDescription: {
+    marginTop: 10,
+    marginBottom: 24,
+    color: '#8A7B72',
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
 
   splashContainer: {
   flex: 1,
