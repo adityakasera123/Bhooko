@@ -1,21 +1,31 @@
-
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import {
+  ImageBackground,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
 import { Theme } from '../../theme';
+
+const offerImage = require('../../../assets/images/home/offers/offer-01.png');
 
 export default function OfferBanner() {
   return (
     <View style={styles.container}>
-      <View style={styles.banner}>
-        <View style={styles.content}>
-          <View style={styles.smallLine} />
-          <View style={styles.headingLine} />
-          <View style={styles.descriptionLine} />
-          <View style={styles.buttonPlaceholder} />
+      <ImageBackground
+        source={offerImage}
+        resizeMode="contain"
+        style={styles.banner}
+        imageStyle={styles.image}
+      >
+        <View style={styles.buttonArea}>
+          <View style={styles.button}>
+            <Text style={styles.buttonText}>Explore Now</Text>
+            <Text style={styles.arrow}>→</Text>
+          </View>
         </View>
-
-        <View style={styles.imagePlaceholder} />
-      </View>
+      </ImageBackground>
     </View>
   );
 }
@@ -26,48 +36,43 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.xxl,
   },
   banner: {
-    minHeight: 150,
+    width: '100%',
+    aspectRatio: 1365 / 768,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
     borderRadius: Theme.radius.banner,
-    backgroundColor: Theme.colors.border,
-    padding: Theme.spacing.lg,
+  },
+  image: {
+    borderRadius: Theme.radius.banner,
+  },
+  buttonArea: {
+    position: 'absolute',
+    bottom: 15,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  button: {
+    minWidth: 155,
+    height: 42,
+    paddingHorizontal: 18,
+    borderRadius: Theme.radius.pill,
+    backgroundColor: Theme.colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: 'center',
+    gap: 9,
+    elevation: 4,
   },
-  content: {
-    flex: 1,
-    gap: Theme.spacing.sm,
+  buttonText: {
+    color: Theme.colors.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
-  smallLine: {
-    height: 9,
-    width: '38%',
-    borderRadius: Theme.radius.pill,
-    backgroundColor: Theme.colors.disabled,
-  },
-  headingLine: {
-    height: 18,
-    width: '90%',
-    borderRadius: Theme.radius.sm,
-    backgroundColor: Theme.colors.disabled,
-  },
-  descriptionLine: {
-    height: 10,
-    width: '70%',
-    borderRadius: Theme.radius.pill,
-    backgroundColor: Theme.colors.disabled,
-  },
-  buttonPlaceholder: {
-    width: 82,
-    height: 29,
-    borderRadius: Theme.radius.md,
-    backgroundColor: Theme.colors.disabled,
-    marginTop: Theme.spacing.xs,
-  },
-  imagePlaceholder: {
-    width: 105,
-    height: 105,
-    borderRadius: Theme.radius.lg,
-    backgroundColor: Theme.colors.disabled,
-    marginLeft: Theme.spacing.sm,
+  arrow: {
+    color: Theme.colors.white,
+    fontSize: 21,
+    fontWeight: '700',
+    marginTop: -2,
   },
 });
