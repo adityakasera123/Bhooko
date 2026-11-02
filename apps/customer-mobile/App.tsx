@@ -43,7 +43,9 @@ import {
 
 import TrackingScreen from './src/screens/tracking/TrackingScreen';
 import AuthScreen from './src/screens/auth/AuthScreen';
-import HomeSkeleton from './src/components/home/HomeSkeleton';
+import HomeScreen from './src/screens/home/HomeScreen';
+import type { HomeTab } from './src/screens/home/HomeScreen';
+import BottomTabBar from './src/components/navigation/BottomTabBar';
 
 import {
   loginCustomer,
@@ -104,6 +106,7 @@ export default function App() {
   // Temporary customer authentication state.
  const [isAuthenticated, setIsAuthenticated] = useState(false);
  const [showDevPanel, setShowDevPanel] = useState(false);
+ const [activeTab, setActiveTab] = useState<HomeTab>('home');
 const [customerName, setCustomerName] = useState('');
 
 const [authChecking, setAuthChecking] = useState(SHOW_AUTH_UI);
@@ -663,7 +666,8 @@ if (SHOW_AUTH_UI && isAuthenticated && !showDevPanel) {
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
-      <HomeSkeleton />
+
+      <HomeScreen activeTab={activeTab} />
 
       <View style={{
         flexDirection: 'row',
@@ -686,6 +690,11 @@ if (SHOW_AUTH_UI && isAuthenticated && !showDevPanel) {
           <Text style={styles.buttonText}>Logout</Text>
         </TouchableOpacity>
       </View>
+
+      <BottomTabBar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
     </View>
   );
 }

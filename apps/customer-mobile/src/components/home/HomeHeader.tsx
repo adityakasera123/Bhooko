@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../../theme';
@@ -6,20 +5,24 @@ import { Theme } from '../../theme';
 export default function HomeHeader() {
   return (
     <View style={styles.container}>
-      <View style={styles.locationContainer}>
-        <View style={styles.locationIcon} />
+      <View style={styles.locationSection}>
+        <View style={styles.pin}>
+          <View style={styles.pinInner} />
+        </View>
 
         <View style={styles.locationText}>
-          <Text style={styles.label}>DELIVERING TO</Text>
-          <View style={styles.locationRow}>
-            <Text style={styles.location}>Your Location</Text>
-            <View style={styles.arrowPlaceholder} />
+          <View style={styles.cityRow}>
+            <Text style={styles.city}>Jaunpur</Text>
+            <View style={styles.chevron} />
           </View>
-          <Text style={styles.address}>Add your delivery address</Text>
+
+          <Text style={styles.address}>Uttar Pradesh, India</Text>
         </View>
       </View>
 
-      <View style={styles.profilePlaceholder} />
+      <View style={styles.profile}>
+        <Text style={styles.profileInitial}>A</Text>
+      </View>
     </View>
   );
 }
@@ -27,63 +30,72 @@ export default function HomeHeader() {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Theme.spacing.screen,
-    paddingTop: Theme.spacing.md,
-    paddingBottom: Theme.spacing.lg,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
-  locationContainer: {
+  locationSection: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  locationIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: Theme.radius.md,
-    backgroundColor: Theme.colors.border,
-    marginRight: Theme.spacing.md,
+  pin: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: Theme.colors.white,
   },
   locationText: {
-    flex: 1,
+    marginLeft: 12,
   },
-  label: {
-    fontSize: Theme.typography.size.xs,
-    color: Theme.colors.textSecondary,
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
-  locationRow: {
+  cityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 3,
+    gap: 10,
   },
-  location: {
-    fontSize: Theme.typography.size.lg,
-    fontWeight: '700',
+  city: {
     color: Theme.colors.text,
+    fontSize: 23,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
-  arrowPlaceholder: {
-    width: 7,
-    height: 7,
-    borderRightWidth: 1.5,
-    borderBottomWidth: 1.5,
-    borderColor: Theme.colors.text,
+  chevron: {
+    width: 10,
+    height: 10,
+    borderRightWidth: 2.5,
+    borderBottomWidth: 2.5,
+    borderColor: Theme.colors.primary,
     transform: [{ rotate: '45deg' }],
-    marginLeft: 8,
-    marginTop: -4,
+    marginTop: -5,
   },
   address: {
-    fontSize: Theme.typography.size.xs,
     color: Theme.colors.textSecondary,
-    marginTop: 3,
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 2,
   },
-  profilePlaceholder: {
-    width: 42,
-    height: 42,
-    borderRadius: Theme.radius.pill,
-    backgroundColor: Theme.colors.border,
-    marginLeft: Theme.spacing.md,
+  profile: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  profileInitial: {
+    color: Theme.colors.primary,
+    fontSize: 20,
+    fontWeight: '700',
   },
 });
