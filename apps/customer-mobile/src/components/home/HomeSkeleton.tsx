@@ -9,6 +9,7 @@ import CategorySection from './CategorySection';
 import RestaurantSection from './RestaurantSection';
 import FoodSection from './FoodSection';
 import SweetToothSection from './SweetToothSection';
+import StreetFoodSection from './StreetFoodSection';
 
 export default function HomeSkeleton() {
   return (
@@ -24,6 +25,7 @@ export default function HomeSkeleton() {
         <RestaurantSection />
         <FoodSection />
         <SweetToothSection />
+        <StreetFoodSection />
       </ScrollView>
     </View>
   );
