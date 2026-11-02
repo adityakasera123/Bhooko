@@ -43,6 +43,7 @@ import {
 
 import TrackingScreen from './src/screens/tracking/TrackingScreen';
 import AuthScreen from './src/screens/auth/AuthScreen';
+import HomeSkeleton from './src/components/home/HomeSkeleton';
 
 import {
   loginCustomer,
@@ -660,27 +661,29 @@ if (SHOW_AUTH_UI && !isAuthenticated) {
 
 if (SHOW_AUTH_UI && isAuthenticated && !showDevPanel) {
   return (
-    <View style={styles.authenticatedContainer}>
+    <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
-      <View style={styles.authenticatedCard}>
-        <Text style={styles.logo}>BHOOKO</Text>
-        <Text style={styles.authenticatedHeading}>
-          Welcome{customerName ? `, ${customerName}` : ''}!
-        </Text>
-        <Text style={styles.authenticatedDescription}>
-          You are successfully signed in to your BHOOKO customer account.
-        </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleLogout}>
-          <Text style={styles.buttonText}>Logout</Text>
-        </TouchableOpacity>
+      <HomeSkeleton />
 
+      <View style={{
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 12,
+        padding: 10,
+        backgroundColor: '#FFFFFF',
+      }}>
         <TouchableOpacity
           style={styles.secondaryButton}
           onPress={() => setShowDevPanel(true)}
         >
-          <Text style={styles.secondaryButtonText}>
-            Open Development Test Panel
-          </Text>
+          <Text style={styles.secondaryButtonText}>Dev Panel</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handleLogout}
+        >
+          <Text style={styles.buttonText}>Logout</Text>
         </TouchableOpacity>
       </View>
     </View>
