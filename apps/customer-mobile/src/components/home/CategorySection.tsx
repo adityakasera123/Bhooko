@@ -8,41 +8,54 @@ import {
 } from 'react-native';
 
 import { Theme } from '../../theme';
+import type { HomeCategory } from '../../services/home/useHomeData';
 
-const categories = [
-  {
-    id: 'biryani',
-    name: 'Biryani',
-    image: require('../../../assets/images/home/categories/briyani.png'),
-  },
-  {
-    id: 'pizza',
-    name: 'Pizza',
-    image: require('../../../assets/images/home/categories/pizza.png'),
-  },
-  {
-    id: 'burger',
-    name: 'Burger',
-    image: require('../../../assets/images/home/categories/burger.png'),
-  },
-  {
-    id: 'chinese',
-    name: 'Chinese',
-    image: require('../../../assets/images/home/categories/chinese.png'),
-  },
-  {
-    id: 'dosa',
-    name: 'Dosa',
-    image: require('../../../assets/images/home/categories/dosa.png'),
-  },
-  {
-    id: 'snacks',
-    name: 'Snacks',
-    image: require('../../../assets/images/home/categories/snacks.png'),
-  },
-];
+type CategorySectionProps = {
+  categories: HomeCategory[];
+};
 
-export default function CategorySection() {
+const categoryImages: Record<string, any> = {
+  biryani: require('../../../assets/images/home/categories/briyani.png'),
+  pizza: require('../../../assets/images/home/categories/pizza.png'),
+  burger: require('../../../assets/images/home/categories/burger.png'),
+  chinese: require('../../../assets/images/home/categories/chinese.png'),
+  dosa: require('../../../assets/images/home/categories/dosa.png'),
+  snacks: require('../../../assets/images/home/categories/snacks.png'),
+};
+
+function CategoryCard({ category }: { category: HomeCategory }) {
+  const image = categoryImages[category.name.trim().toLowerCase()];
+
+  return (
+    <View style={styles.category}>
+      <View style={styles.imageContainer}>
+        {image ? (
+          <Image
+            source={image}
+            style={styles.image}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.fallback}>
+            <Text style={styles.fallbackText}>
+              {category.name.trim().charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <Text style={styles.categoryName} numberOfLines={1}>
+        {category.name}
+      </Text>
+    </View>
+  );
+}
+
+export default function CategorySection({
+  categories,
+}: CategorySectionProps) {
+  if (categories.length === 0) return null;
+
   return (
     <View style={styles.container}>
       <View style={styles.headingRow}>
@@ -56,19 +69,10 @@ export default function CategorySection() {
         contentContainerStyle={styles.list}
       >
         {categories.map((category) => (
-          <View key={category.id} style={styles.category}>
-            <View style={styles.imageContainer}>
-              <Image
-                source={category.image}
-                style={styles.image}
-                resizeMode="cover"
-              />
-            </View>
-
-            <Text style={styles.categoryName} numberOfLines={1}>
-              {category.name}
-            </Text>
-          </View>
+          <CategoryCard
+            key={category.id}
+            category={category}
+          />
         ))}
       </ScrollView>
     </View>
@@ -115,6 +119,17 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  fallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8EEE5',
+  },
+  fallbackText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Theme.colors.primary,
   },
   categoryName: {
     fontSize: Theme.typography.size.sm,

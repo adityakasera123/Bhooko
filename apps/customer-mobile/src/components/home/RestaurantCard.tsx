@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -7,64 +8,76 @@ import {
 } from 'react-native';
 
 import { Theme } from '../../theme';
+import type { Restaurant } from '../../services/api/restaurantsApi';
 
 type RestaurantCardProps = {
-  image: any;
-  name: string;
-  cuisine: string;
-  rating: string;
-  deliveryTime: string;
-  deliveryFee: string;
-  offer: string;
+  restaurant: Restaurant;
 };
 
 export default function RestaurantCard({
-  image,
-  name,
-  cuisine,
-  rating,
-  deliveryTime,
-  deliveryFee,
-  offer,
+  restaurant,
 }: RestaurantCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  const fallbackImage = require('../../../assets/images/home/restaurants/restaurant-01.jpg');
+
+  const imageSource =
+    restaurant.imageUrl && !imageFailed
+      ? { uri: restaurant.imageUrl }
+      : fallbackImage;
+
+  const location = [
+    restaurant.area,
+    restaurant.city,
+  ].filter(Boolean).join(', ');
+
+  const isOpen = restaurant.status === 'OPEN';
+
   return (
     <View style={styles.container}>
       <View style={styles.imageContainer}>
         <Image
-          source={image}
+          source={imageSource}
           style={styles.image}
           resizeMode="cover"
+          onError={() => setImageFailed(true)}
         />
 
-        <View style={styles.offerBadge}>
-          <Text style={styles.offerText}>{offer}</Text>
+        <View
+          style={[
+            styles.statusBadge,
+            !isOpen && styles.pausedBadge,
+          ]}
+        >
+          <Text style={styles.statusText}>
+            {isOpen ? 'OPEN' : 'PAUSED'}
+          </Text>
         </View>
 
-        <View style={styles.ratingBadge}>
-          <Text style={styles.ratingStar}>★</Text>
-          <Text style={styles.ratingText}>{rating}</Text>
-        </View>
+        {restaurant.rating > 0 && (
+          <View style={styles.ratingBadge}>
+            <Text style={styles.ratingStar}>★</Text>
+            <Text style={styles.ratingText}>
+              {restaurant.rating.toFixed(1)}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.details}>
         <Text style={styles.name} numberOfLines={1}>
-          {name}
+          {restaurant.name}
         </Text>
 
-        <Text style={styles.cuisine} numberOfLines={1}>
-          {cuisine}
+        <Text style={styles.location} numberOfLines={1}>
+          {location || restaurant.addressLine1}
         </Text>
 
-        <View style={styles.metaRow}>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaIcon}>◷</Text>
-            <Text style={styles.metaText}>{deliveryTime}</Text>
-          </View>
-
-          <View style={styles.metaDot} />
-
-          <Text style={styles.metaText}>{deliveryFee}</Text>
-        </View>
+        <Text style={styles.reviewText}>
+          {restaurant.reviewCount > 0
+            ? `${restaurant.reviewCount} reviews`
+            : 'New restaurant'}
+        </Text>
       </View>
     </View>
   );
@@ -89,18 +102,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  offerBadge: {
+  statusBadge: {
     position: 'absolute',
     top: 12,
     left: 12,
-    paddingHorizontal: 11,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: Theme.radius.sm,
-    backgroundColor: Theme.colors.primary,
+    backgroundColor: '#287A4B',
   },
-  offerText: {
+  pausedBadge: {
+    backgroundColor: '#777777',
+  },
+  statusText: {
     color: Theme.colors.white,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
   },
   ratingBadge: {
@@ -133,36 +149,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
   },
-  cuisine: {
+  location: {
     color: Theme.colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
   },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    marginTop: 3,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  metaIcon: {
-    color: Theme.colors.primary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  metaText: {
+  reviewText: {
     color: Theme.colors.textSecondary,
     fontSize: 11,
     fontWeight: '600',
-  },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: Theme.colors.textSecondary,
   },
 });

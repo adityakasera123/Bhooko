@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -8,45 +9,91 @@ import {
 } from 'react-native';
 
 import { Theme } from '../../theme';
+import type { HomeFoodItem } from '../../services/home/useHomeData';
 
-const foodItems = [
-  {
-    id: '1',
-    name: 'Chicken Biryani',
-    restaurant: 'Royal Biryani House',
-    price: '₹199',
-    rating: '4.8',
-    badge: 'BESTSELLER',
-    image: require('../../../assets/images/home/categories/briyani.png'),
-  },
-  {
-    id: '2',
-    name: 'Margherita Pizza',
-    restaurant: 'The Pizza Corner',
-    price: '₹179',
-    rating: '4.6',
-    badge: 'POPULAR',
-    image: require('../../../assets/images/home/categories/pizza.png'),
-  },
-  {
-    id: '3',
-    name: 'Crispy Burger',
-    restaurant: 'Burger House',
-    price: '₹129',
-    rating: '4.5',
-    badge: 'MUST TRY',
-    image: require('../../../assets/images/home/categories/burger.png'),
-  },
-];
+type FoodSectionProps = {
+  items: HomeFoodItem[];
+};
 
-export default function FoodSection() {
+function FoodCard({ item }: { item: HomeFoodItem }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  const imageSource =
+    item.imageUrl && !imageFailed
+      ? { uri: item.imageUrl }
+      : require('../../../assets/images/home/categories/briyani.png');
+
+  const price = `₹${(item.priceInPaise / 100).toFixed(0)}`;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.imageContainer}>
+        <Image
+          source={imageSource}
+          style={styles.image}
+          resizeMode="contain"
+          onError={() => setImageFailed(true)}
+        />
+
+        <View
+          style={[
+            styles.foodTypeBadge,
+            item.foodType === 'VEG'
+              ? styles.vegBadge
+              : item.foodType === 'NON_VEG'
+                ? styles.nonVegBadge
+                : styles.eggBadge,
+          ]}
+        >
+          <View
+            style={[
+              styles.foodTypeDot,
+              item.foodType === 'VEG'
+                ? styles.vegDot
+                : item.foodType === 'NON_VEG'
+                  ? styles.nonVegDot
+                  : styles.eggDot,
+            ]}
+          />
+          <Text style={styles.foodTypeText}>
+            {item.foodType === 'NON_VEG' ? 'NON-VEG' : item.foodType}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.details}>
+        <Text style={styles.name} numberOfLines={1}>
+          {item.name}
+        </Text>
+
+        <Text style={styles.restaurant} numberOfLines={1}>
+          {item.restaurantName}
+        </Text>
+
+        <View style={styles.divider} />
+
+        <View style={styles.bottomRow}>
+          <Text style={styles.price}>{price}</Text>
+          <View style={styles.addButton}>
+            <Text style={styles.addText}>ADD</Text>
+            <Text style={styles.plus}>+</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export default function FoodSection({ items }: FoodSectionProps) {
+  if (items.length === 0) return null;
+
   return (
     <View style={styles.container}>
       <View style={styles.headingRow}>
         <View style={styles.headingContent}>
-          <Text style={styles.heading}>Popular dishes</Text>
+          <Text style={styles.heading}>Explore dishes</Text>
           <Text style={styles.subtitle}>
-            Tasty picks you shouldn't miss
+            Discover dishes from restaurants near you
           </Text>
         </View>
 
@@ -58,48 +105,8 @@ export default function FoodSection() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
       >
-        {foodItems.map((item) => (
-          <View key={item.id} style={styles.card}>
-            <View style={styles.imageContainer}>
-              <Image
-                source={item.image}
-                style={styles.image}
-                resizeMode="contain"
-              />
-
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{item.badge}</Text>
-              </View>
-            </View>
-
-            <View style={styles.details}>
-              <Text style={styles.name} numberOfLines={1}>
-                {item.name}
-              </Text>
-
-              <View style={styles.restaurantRow}>
-                <Text style={styles.restaurant} numberOfLines={1}>
-                  {item.restaurant}
-                </Text>
-
-                <View style={styles.rating}>
-                  <Text style={styles.star}>★</Text>
-                  <Text style={styles.ratingText}>{item.rating}</Text>
-                </View>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.bottomRow}>
-                <Text style={styles.price}>{item.price}</Text>
-
-                <View style={styles.addButton}>
-                  <Text style={styles.addText}>ADD</Text>
-                  <Text style={styles.plus}>+</Text>
-                </View>
-              </View>
-            </View>
-          </View>
+        {items.map((item) => (
+          <FoodCard key={item.id} item={item} />
         ))}
       </ScrollView>
     </View>
@@ -160,20 +167,48 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  badge: {
+  foodTypeBadge: {
     position: 'absolute',
     top: 11,
     left: 11,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 6,
     borderRadius: Theme.radius.pill,
-    backgroundColor: Theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Theme.colors.white,
   },
-  badgeText: {
-    color: Theme.colors.white,
+  vegBadge: {
+    borderColor: '#27834B',
+    borderWidth: 1,
+  },
+  nonVegBadge: {
+    borderColor: '#C74735',
+    borderWidth: 1,
+  },
+  eggBadge: {
+    borderColor: '#C18A25',
+    borderWidth: 1,
+  },
+  foodTypeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  vegDot: {
+    backgroundColor: '#27834B',
+  },
+  nonVegDot: {
+    backgroundColor: '#C74735',
+  },
+  eggDot: {
+    backgroundColor: '#C18A25',
+  },
+  foodTypeText: {
+    color: Theme.colors.text,
     fontSize: 9,
     fontWeight: '800',
-    letterSpacing: 0.3,
   },
   details: {
     padding: 13,
@@ -184,35 +219,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
   },
-  restaurantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 5,
-  },
   restaurant: {
-    flex: 1,
     color: Theme.colors.textSecondary,
     fontSize: 10,
     fontWeight: '500',
-  },
-  rating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#FFF5E7',
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: Theme.radius.pill,
-  },
-  star: {
-    color: '#E5A323',
-    fontSize: 10,
-  },
-  ratingText: {
-    color: Theme.colors.text,
-    fontSize: 10,
-    fontWeight: '800',
   },
   divider: {
     height: 1,

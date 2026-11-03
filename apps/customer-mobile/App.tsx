@@ -662,34 +662,18 @@ if (SHOW_AUTH_UI && !isAuthenticated) {
   );
 }
 
+
 if (SHOW_AUTH_UI && isAuthenticated && !showDevPanel) {
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
 
-      <HomeScreen activeTab={activeTab} />
-
-      <View style={{
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 12,
-        padding: 10,
-        backgroundColor: '#FFFFFF',
-      }}>
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => setShowDevPanel(true)}
-        >
-          <Text style={styles.secondaryButtonText}>Dev Panel</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={handleLogout}
-        >
-          <Text style={styles.buttonText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
+      <HomeScreen
+        activeTab={activeTab}
+        customerName={customerName}
+        onLogout={handleLogout}
+        onOpenDevPanel={() => setShowDevPanel(true)}
+      />
 
       <BottomTabBar
         activeTab={activeTab}
@@ -698,6 +682,7 @@ if (SHOW_AUTH_UI && isAuthenticated && !showDevPanel) {
     </View>
   );
 }
+
 
  return (
   <ScrollView
