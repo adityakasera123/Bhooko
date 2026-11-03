@@ -1,5 +1,12 @@
+
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  House,
+  Search,
+  ShoppingBag,
+  UserRound,
+} from 'lucide-react-native';
 
 import { Theme } from '../../theme';
 import type { HomeTab } from '../../screens/home/HomeScreen';
@@ -9,12 +16,12 @@ type BottomTabBarProps = {
   onTabChange: (tab: HomeTab) => void;
 };
 
-const tabs: { key: HomeTab; label: string; symbol: string }[] = [
-  { key: 'home', label: 'Home', symbol: '⌂' },
-  { key: 'search', label: 'Search', symbol: '⌕' },
-  { key: 'orders', label: 'Orders', symbol: '▤' },
-  { key: 'profile', label: 'Profile', symbol: '○' },
-];
+const tabs = [
+  { key: 'home', label: 'Home', Icon: House },
+  { key: 'search', label: 'Search', Icon: Search },
+  { key: 'orders', label: 'Orders', Icon: ShoppingBag },
+  { key: 'profile', label: 'Profile', Icon: UserRound },
+] as const;
 
 export default function BottomTabBar({
   activeTab,
@@ -22,26 +29,39 @@ export default function BottomTabBar({
 }: BottomTabBarProps) {
   return (
     <View style={styles.container}>
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.key;
+      {tabs.map(({ key, label, Icon }) => {
+        const isActive = activeTab === key;
 
         return (
           <TouchableOpacity
-            key={tab.key}
+            key={key}
             style={styles.tab}
-            onPress={() => onTabChange(tab.key)}
-            activeOpacity={0.7}
+            onPress={() => onTabChange(key)}
+            activeOpacity={0.75}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
-            accessibilityLabel={tab.label}
+            accessibilityLabel={label}
           >
-            <Text style={[styles.symbol, isActive && styles.activeText]}>
-              {tab.symbol}
+            <View
+              style={[
+                styles.iconContainer,
+                isActive && styles.activeIconContainer,
+              ]}
+            >
+              <Icon
+                size={22}
+                strokeWidth={isActive ? 2.4 : 1.8}
+                color={
+                  isActive
+                    ? Theme.colors.primary
+                    : Theme.colors.textSecondary
+                }
+              />
+            </View>
+
+            <Text style={[styles.label, isActive && styles.activeLabel]}>
+              {label}
             </Text>
-            <Text style={[styles.label, isActive && styles.activeText]}>
-              {tab.label}
-            </Text>
-            {isActive && <View style={styles.activeIndicator} />}
           </TouchableOpacity>
         );
       })}
@@ -56,36 +76,35 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingTop: Theme.spacing.sm,
     paddingBottom: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.sm,
     backgroundColor: Theme.colors.white,
     borderTopWidth: 1,
     borderTopColor: Theme.colors.border,
   },
   tab: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 4,
   },
-  symbol: {
-    fontSize: 23,
-    color: Theme.colors.textSecondary,
+  iconContainer: {
+    width: 54,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Theme.radius.pill,
+  },
+  activeIconContainer: {
+    backgroundColor: '#FFF0E6',
   },
   label: {
     fontSize: Theme.typography.size.xs,
     fontWeight: '500',
     color: Theme.colors.textSecondary,
   },
-  activeText: {
+  activeLabel: {
     color: Theme.colors.primary,
     fontWeight: '700',
-  },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: -Theme.spacing.sm,
-    width: 20,
-    height: 3,
-    borderRadius: Theme.radius.pill,
-    backgroundColor: Theme.colors.primary,
   },
 });

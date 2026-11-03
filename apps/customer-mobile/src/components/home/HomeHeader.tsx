@@ -1,19 +1,26 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Theme } from '../../theme';
+import { MapPin, ChevronDown } from 'lucide-react-native';
 
 export default function HomeHeader() {
   return (
     <View style={styles.container}>
       <View style={styles.locationSection}>
-        <View style={styles.pin}>
-          <View style={styles.pinInner} />
-        </View>
+      <MapPin
+  size={26}
+  color={Theme.colors.primary}
+  strokeWidth={2.2}
+/>
 
         <View style={styles.locationText}>
           <View style={styles.cityRow}>
             <Text style={styles.city}>Jaunpur</Text>
-            <View style={styles.chevron} />
+            <ChevronDown
+  size={19}
+  color={Theme.colors.primary}
+  strokeWidth={2.8}
+/>
           </View>
 
           <Text style={styles.address}>Uttar Pradesh, India</Text>
